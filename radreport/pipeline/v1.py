@@ -5,7 +5,8 @@ Order: build_v1_graph assembles all 15 stages into the graph that graph.py then 
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import uuid
+from collections.abc import Mapping, Sequence
 
 from radreport.adapters.asr.base import ASREngine
 from radreport.adapters.llm.base import LLMClient
@@ -41,11 +42,36 @@ V1_PIPELINE_VERSION = "1.0.0-v1"
 BETA_PIPELINE_VERSION = "1.1.0-beta"
 
 
-def build_v1_graph(*, store: ObjectStore, asr_engine: ASREngine, knowledge: KnowledgeProvider, templates: Sequence[TemplateCandidate], sections: Sequence[SectionSpec], llm_client: LLMClient | None = None, shortlist_picker: ShortlistPicker | None = None, extra_asr_engines: Sequence[EngineSpec] = (), enable_post_correction: bool = False, enable_critic: bool = False, render_spec: RenderSpec | None = None, critical_field_keys: frozenset[str] = frozenset(), enum_options: dict[str, tuple[str, ...]] | None = None, referrer_prior: dict[str, float] | None = None, weeks_since_go_live: int = 0, enable_autonomous_release: bool = False, version: str = V1_PIPELINE_VERSION) -> PipelineGraph:
-    """Assemble the 15-stage V1 graph."""
+def build_v1_graph(
+    *,
+    store: ObjectStore,
+    asr_engine: ASREngine,
+    knowledge: KnowledgeProvider,
+    templates: Sequence[TemplateCandidate],
+    sections: Sequence[SectionSpec],
+    llm_client: LLMClient | None = None,
+    shortlist_picker: ShortlistPicker | None = None,
+    extra_asr_engines: Sequence[EngineSpec] = (),
+    enable_post_correction: bool = False,
+    enable_critic: bool = False,
+    render_spec: RenderSpec | None = None,
+    llm_tasks: frozenset[str] | None = None,
+    sections_by_template: Mapping[uuid.UUID, Sequence[SectionSpec]] | None = None,
+    critical_field_keys: frozenset[str] = frozenset(),
+    enum_options: dict[str, tuple[str, ...]] | None = None,
+    referrer_prior: dict[str, float] | None = None,
+    weeks_since_go_live: int = 0,
+    enable_autonomous_release: bool = False,
+    version: str = V1_PIPELINE_VERSION,
+) -> PipelineGraph:
+    """Assemble the 15-stage V1 graph. With `llm_tasks`, a model-backed stage gets the client only when its step has a live model; otherwise it runs its deterministic path."""
+
+    def client_for_task(task_key: str) -> LLMClient | None:
+        return llm_client if llm_client is not None and (llm_tasks is None or task_key in llm_tasks) else None
+
     # The multi-engine path replaces the single-engine stage rather than wrapping it: a two-engine "fan-out" with one engine is just the V1 stage with extra machinery and an extra name in the trace.
     if extra_asr_engines:
-        asr_spec = StageSpec(ReconcileStage([EngineSpec(engine=asr_engine), *extra_asr_engines], store, knowledge, llm_client=llm_client))
+        asr_spec = StageSpec(ReconcileStage([EngineSpec(engine=asr_engine), *extra_asr_engines], store, knowledge, llm_client=client_for_task(TaskKey.SELF_CORRECTION)))
     else:
         asr_spec = StageSpec(AsrStage(asr_engine, store, knowledge))
 
@@ -58,17 +84,17 @@ def build_v1_graph(*, store: ObjectStore, asr_engine: ASREngine, knowledge: Know
     specs += [
         StageSpec(NormaliseStage(knowledge)),
         StageSpec(StudyCodeStage(knowledge)),
-        StageSpec(SegmentStage(llm_client), task_key=TaskKey.UTTERANCE_CLASSIFICATION if llm_client else None),
+        StageSpec(SegmentStage(segment_client := client_for_task(TaskKey.UTTERANCE_CLASSIFICATION)), task_key=TaskKey.UTTERANCE_CLASSIFICATION if segment_client else None),
         StageSpec(ResolveRepairsStage()),
         # Never optional.: a report that reached a queue with its alerting
         # silently skipped looks exactly like one with no critical findings.
         StageSpec(CriticalFindingsStage(knowledge)),
-        StageSpec(SketchStage(llm_client), task_key=TaskKey.EXTRACTION if llm_client else None),
+        StageSpec(SketchStage(extract_client := client_for_task(TaskKey.EXTRACTION)), task_key=TaskKey.EXTRACTION if extract_client else None),
         StageSpec(RoutingStage(knowledge, templates, picker=shortlist_picker, referrer_prior=referrer_prior), task_key=TaskKey.ROUTING_PICK if shortlist_picker else None),
     ]
 
-    if llm_client is not None and sections:
-        specs.append(StageSpec(ExtractStage(llm_client, list(sections)), task_key=TaskKey.EXTRACTION))
+    if extract_client is not None and (sections or sections_by_template):
+        specs.append(StageSpec(ExtractStage(extract_client, list(sections), sections_by_template=sections_by_template), task_key=TaskKey.EXTRACTION))
 
     specs += [
         # Never optional. A draft whose provenance was never checked is
@@ -78,9 +104,9 @@ def build_v1_graph(*, store: ObjectStore, asr_engine: ASREngine, knowledge: Know
         StageSpec(VerifyStage(enum_options=enum_options)),
     ]
 
-    if enable_critic and llm_client is not None:
+    if enable_critic and client_for_task(TaskKey.VERIFICATION) is not None:
         # `optional`, unlike grounding and critical findings: the deterministic checks have already run and they carry the safety argument, so a critic that fails to respond must not fail the report.
-        specs.append(StageSpec(CriticStage(llm_client), task_key=TaskKey.VERIFICATION, optional=True))
+        specs.append(StageSpec(CriticStage(client_for_task(TaskKey.VERIFICATION)), task_key=TaskKey.VERIFICATION, optional=True))
 
     specs += [
         StageSpec(ConfidenceStage(critical_field_keys=critical_field_keys)),

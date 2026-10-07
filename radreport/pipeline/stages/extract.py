@@ -1,14 +1,17 @@
 """Stage 10: fills in the template's fields from the dictation, asking three times and keeping only answers that quote the audio.
 
 Order: build the prompt per section (build_prompt) -> read each answer (parse_fields) -> keep
-what the samples agree on (merge_samples). The most expensive stage, and the one carrying the
+what the samples agree on (merge_samples), with each quote moved to where it actually occurs
+(anchor_quote). The most expensive stage, and the one carrying the
 most safety checks.
 """
 
 from __future__ import annotations
 
 import json
+import uuid
 from collections import Counter
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -91,6 +94,17 @@ def parse_fields(text: str, allowed: frozenset[str]) -> dict[str, dict[str, Any]
     return {k: v for k, v in fields.items() if k in allowed and isinstance(v, dict)}
 
 
+def anchor_quote(transcript: str, quote: str, start: int, end: int) -> tuple[int, int]:
+    """The offsets of `quote` in `transcript`: as given when they already hold it, else its exact occurrence nearest `start`; unchanged when it occurs nowhere, so grounding still rejects a paraphrase."""
+    if transcript[start:end] == quote:
+        return start, end
+    found = [i for i in range(len(transcript)) if transcript.startswith(quote, i)]
+    if not found:
+        return start, end
+    best = min(found, key=lambda i: abs(i - start))
+    return best, best + len(quote)
+
+
 def _value_signature(item: dict[str, Any]) -> str:
     """What counts as "the same answer" across samples."""
     return json.dumps({"value_text": (item.get("value_text") or "").strip().lower() or None, "value_enum": item.get("value_enum"), "value_numeric": item.get("value_numeric"), "assertion_status": item.get("assertion_status"), "laterality": item.get("laterality")}, sort_keys=True)
@@ -118,6 +132,8 @@ def merge_samples(samples: list[dict[str, dict[str, Any]]], transcript: str, tim
             # I1: a value with no citation is dropped here rather than passed on.
             result.dropped_uncited.append(key)
             continue
+        # Models quote faithfully but count characters badly; the quote, not the count, is the evidence.
+        start, end = anchor_quote(transcript, quote, start, end)
 
         audio_start_ms, audio_end_ms, _interpolated = audio_span(timings or [], start, end)
         result.values[key] = FieldValue(
@@ -160,9 +176,10 @@ class ExtractStage:
     version = "1.0.0"
     task_key = TaskKey.EXTRACTION
 
-    def __init__(self, client: LLMClient, sections: list[SectionSpec], *, k: int = DEFAULT_K, temperature: float = DEFAULT_TEMPERATURE, max_tokens: int = 4096) -> None:
+    def __init__(self, client: LLMClient, sections: list[SectionSpec], *, sections_by_template: Mapping[uuid.UUID, Sequence[SectionSpec]] | None = None, k: int = DEFAULT_K, temperature: float = DEFAULT_TEMPERATURE, max_tokens: int = 4096) -> None:
         self._client = client
         self._sections = sections
+        self._sections_by_template = sections_by_template or {}
         self._k = k
         self._temperature = temperature
         self._max_tokens = max_tokens
@@ -171,14 +188,26 @@ class ExtractStage:
         """False: k paid calls per section."""
         return False
 
+    def sections_for(self, state: PipelineState) -> list[SectionSpec]:
+        """The chosen template's sections when templates carry their own, else the fixed list."""
+        if not self._sections_by_template:
+            return self._sections
+        chosen = state.routing.chosen_template_version_id if state.routing else None
+        return list(self._sections_by_template.get(chosen, ())) if chosen else []
+
     async def run(self, state: PipelineState, ctx: StageContext) -> StageResult[PipelineState]:
         if state.transcript is None:
             raise ValueError("extraction runs on a transcript; none is present")
 
+        sections = self.sections_for(state)
+        if not sections:
+            # Routing declined, or the template has no fields: nothing to fill, and a model call would only cost.
+            return StageResult(output=state, confidence=0.0, warnings=["no template chosen, so no fields to extract; the dictation goes to a human as it stands"])
+
         from radreport.pipeline.stages.normalise import glossary as build_glossary
 
         resolved = await ctx.resolve_model(self.task_key)
-        model_id = resolved.ref.model_id
+        model_id = resolved.ref.model_identifier
         glossary = build_glossary(state.resolutions)
 
         # The **full** transcript, deliberately.
@@ -188,7 +217,7 @@ class ExtractStage:
         total = ExtractionResult()
         warnings: list[str] = []
 
-        for spec in self._sections:
+        for spec in sections:
             prompt = build_prompt(spec, transcript, glossary)
             samples = await sample_k(self._client, LLMRequest(prompt=prompt, max_tokens=self._max_tokens, json_schema=spec.json_schema), model_id=model_id, k=self._k, temperature=self._temperature)
             parsed = [parse_fields(r.text, frozenset(spec.field_keys)) for r in samples.responses]
@@ -212,5 +241,5 @@ class ExtractStage:
             warnings.append(f"{len(total.disagreements)} field(s) had sample disagreement; their confidence is reduced rather than their value discarded")
 
         confidence = round(sum(v.confidence for v in total.values.values()) / len(total.values), 4) if total.values else 0.0
-        log.info("extraction_complete", sections=len(self._sections), k=self._k, fields=len(total.values), dropped_uncited=len(total.dropped_uncited), disagreements=len(total.disagreements), cost_usd=round(total.cost_usd, 6), cache_read_tokens=total.cache_read_tokens)
+        log.info("extraction_complete", sections=len(sections), k=self._k, fields=len(total.values), dropped_uncited=len(total.dropped_uncited), disagreements=len(total.disagreements), cost_usd=round(total.cost_usd, 6), cache_read_tokens=total.cache_read_tokens)
         return StageResult(output=state, confidence=confidence, cost_usd=total.cost_usd, model_id=model_id, cache_read_tokens=total.cache_read_tokens, cache_write_tokens=total.cache_write_tokens, warnings=warnings)

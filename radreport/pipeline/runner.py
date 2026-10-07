@@ -9,6 +9,7 @@ failure, and the run row is what a person reviews.
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -19,19 +20,22 @@ from sqlalchemy.orm import Session
 from radreport.adapters.llm.base import LLMClient
 from radreport.adapters.llm.registry import TaskModelResolver
 from radreport.adapters.llm.response_cache import with_response_cache
+from radreport.adapters.llm.routed import live_models, routed_client
 from radreport.adapters.storage.object_store import ObjectStore, object_store
 from radreport.core.config import get_settings
 from radreport.core.errors import BudgetExceeded, StageFailed
 from radreport.core.logging import get_logger
-from radreport.core.types import PathType, PipelineTrigger
+from radreport.core.types import PathType, PipelineTrigger, TaskKey
 from radreport.db.models.ingestion import Recording
 from radreport.db.models.knowledge import Template, TemplateVersion
 from radreport.db.models.reporting import CriticalFindingAlert, ReportDraft
 from radreport.db.models.review import FinalReport
 from radreport.events.outbox import Topic, emit
 from radreport.pipeline.graph import PipelineGraph, new_run
+from radreport.pipeline.sections import load_sections
 from radreport.pipeline.stages.providers import StaticKnowledgeProvider, load_tenant_knowledge
 from radreport.pipeline.stages.routing import TemplateCandidate
+from radreport.pipeline.stages.routing_picker import ModelShortlistPicker
 from radreport.pipeline.v1 import V1_PIPELINE_VERSION, build_v1_graph
 from radreport.workers.handlers import handler
 from radreport.workers.queue import ClaimedJob
@@ -51,24 +55,28 @@ def _asr_engine() -> Any:
     from radreport.adapters.asr.whisper_local import StubASREngine, WhisperLocalEngine
 
     settings = get_settings().asr
+    if settings.engine == "deepgram":
+        from radreport.adapters.asr.deepgram import DeepgramEngine
+
+        return DeepgramEngine(api_key=os.environ.get("DEEPGRAM_API_KEY", ""), model=settings.deepgram_model)
     # The stub is the default until real audio and a model are on the machine; set RADREPORT_ASR__ENGINE_VERSION to use Whisper.
     return StubASREngine() if settings.engine_version.endswith("stub") else WhisperLocalEngine()
 
 
-def _llm_client(tenant_id: uuid.UUID) -> LLMClient | None:
-    """The model client for the graph's model-backed stages; none is configured yet, so the graph runs its deterministic path."""
-    return None
-
-
 def default_graph_factory(session: Session, tenant_id: uuid.UUID) -> tuple[PipelineGraph, ObjectStore]:
-    """The V1 graph from this lab's own knowledge, templates and the configured engines."""
+    """The V1 graph from this lab's own knowledge, templates and engines, with a model on each step that has one live; the rest run their deterministic path."""
     store = object_store()
     knowledge = StaticKnowledgeProvider(load_tenant_knowledge(session, tenant_id))
-    client = _llm_client(tenant_id)
+    live = live_models(session, tenant_id)
+    client: LLMClient | None = routed_client(live)
+    picker = None
     if client is not None:
         # Per lab, so one lab's stored replies are never served to another.
         client = with_response_cache(client, tenant_id=tenant_id)
-    graph = build_v1_graph(store=store, asr_engine=_asr_engine(), knowledge=knowledge, templates=load_template_candidates(session, tenant_id), sections=[], llm_client=client)
+        if TaskKey.ROUTING_PICK in live:
+            picker = ModelShortlistPicker(client, live[TaskKey.ROUTING_PICK].ref.model_identifier)
+    sections = load_sections(session, tenant_id) if TaskKey.EXTRACTION in live else {}
+    graph = build_v1_graph(store=store, asr_engine=_asr_engine(), knowledge=knowledge, templates=load_template_candidates(session, tenant_id), sections=[], sections_by_template=sections, llm_client=client, llm_tasks=frozenset(live), shortlist_picker=picker)
     return graph, store
 
 

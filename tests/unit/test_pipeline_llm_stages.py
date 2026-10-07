@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 
-from radreport.adapters.llm.base import LLMResponse, Usage
+from radreport.adapters.llm.base import LLMResponse, ResolvedModelRef, Usage
 from radreport.core.types import AssertionStatus, FillSource, UtteranceLabel
 from radreport.pipeline.stages.extract import SectionSpec, build_prompt, merge_samples, parse_fields
 from radreport.pipeline.stages.segment import INCLUDED_LABELS, SegmentStage, apply_inclusion, fallback_segments, parse_response
@@ -27,15 +28,9 @@ class _Ctx:
     """Minimal `StageContext`: resolves a model, records nothing."""
 
     async def resolve_model(self, task_key: str):
-        @dataclass
-        class _Ref:
-            model_id: str = "claude-sonnet-5"
-
-        @dataclass
-        class _Resolved:
-            ref: _Ref
-
-        return _Resolved(ref=_Ref())
+        # The real ResolvedModelRef, so a stage reading a field it lacks fails here rather than in production.
+        ref = ResolvedModelRef(model_definition_id=uuid.uuid4(), model_identifier="claude-sonnet-5", provider_name="anthropic", provider_kind="cloud_api", endpoint=None, input_price_per_1k=0.002, output_price_per_1k=0.01, cache_read_price_per_1k=0.0002, cache_write_price_per_1k=0.0025)
+        return SimpleNamespace(ref=ref)
 
     def record_cost(self, usd: float) -> None:  # pragma: no cover
         pass

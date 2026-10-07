@@ -141,7 +141,7 @@ class CriticStage:
             raise ValueError("the critic runs against a transcript; none is present")
 
         resolved = await ctx.resolve_model(self.task_key)
-        model_id = resolved.ref.model_id
+        model_id = resolved.ref.model_identifier
         result = CriticResult(model_id=model_id)
 
         # Only grounded values are shown.

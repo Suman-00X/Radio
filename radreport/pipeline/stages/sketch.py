@@ -119,7 +119,7 @@ class SketchStage:
 
         if self._client is not None:
             resolved = await ctx.resolve_model(self.task_key)
-            model_id = resolved.ref.model_id
+            model_id = resolved.ref.model_identifier
             response = await self._client.complete(LLMRequest(prompt=build_prompt(source), max_tokens=self._max_tokens), model_id=model_id)
             cost = response.cost_usd
             sketch = parse_response(response.text)

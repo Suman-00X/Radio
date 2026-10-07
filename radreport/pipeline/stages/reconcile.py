@@ -158,7 +158,7 @@ class ReconcileStage:
             return {}, 0.0, None
 
         resolved = await ctx.resolve_model(TaskKey.SELF_CORRECTION)
-        model_id = resolved.ref.model_id
+        model_id = resolved.ref.model_identifier
         prompt = PromptBundle(stable=[system_block(ARBITRATION_PROMPT)], volatile=[VolatileBlock(text=json.dumps({"disputes": payload}, separators=(",", ":")), label="disputed_spans")])
         assert self._llm is not None, "arbitration runs only when an LLM client was given"
         response = await self._llm.complete(LLMRequest(prompt=prompt, max_tokens=2048), model_id=model_id)
