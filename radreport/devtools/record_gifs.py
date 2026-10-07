@@ -77,11 +77,11 @@ def features_tour(page: Any, base: str, _accounts: dict[str, dict[str, Any]]) ->
     _click(page, "dialog[open] .reason-close", pause=400)
     page.goto(f"{base}/recruiter")
     page.wait_for_timeout(600)
-    # Long enough on the tab bar for the sparkling recordings tab to catch the eye.
-    _show(page, ".feature-tabs", pause=1400)
+    # Long enough on the section buttons for the sparkling crash-test one to catch the eye.
+    _show(page, ".section-switch", pause=1400)
     _click(page, "#tab-btn-hld", pause=1600)
     _scroll(page, 640, pause=900)
-    _show(page, ".feature-tabs", pause=0)
+    _show(page, ".section-switch", pause=0)
     _click(page, "#tab-btn-crash-test", pause=600)
     _scroll(page, 380, pause=1800)
 

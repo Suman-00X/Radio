@@ -207,7 +207,7 @@ def auth_page(title: str, card_html: str, *, subtitle: str, realm: str) -> HTMLR
 </body></html>""")
 
 
-PUBLIC_NAV: tuple[tuple[str, str, str], ...] = (("home", "Try", "/"), ("recruiter", "Recruiter", "/recruiter"), ("features", "Features", "/features"), ("api", "API docs", "/api-docs"))
+PUBLIC_NAV: tuple[tuple[str, str, str], ...] = (("home", "Try the demo", "/"), ("recruiter", "Recruiter tour", "/recruiter"), ("features", "Features", "/features"), ("api", "API docs", "/api-docs"))
 
 
 #: The only roles a demo sign-in shown to the public may have: each can see everything and change nothing.

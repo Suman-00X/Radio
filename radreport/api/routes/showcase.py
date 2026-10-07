@@ -39,7 +39,7 @@ def _doc(name: str) -> str | None:
 
 
 #: The FEATURES.md tabs shown on the recruiter tour, in order; the rest is the features page.
-_TOUR_TABS = ("in-action", "hld", "crash-test")
+_TOUR_TABS = ("for-recruiters", "hld", "crash-test")
 _SPARKLE_TAB = "crash-test"
 #: Where the test suite may be run from the recruiter tour; the access policy refuses the stream everywhere else.
 _LIVE_ENVIRONMENTS = ("local", "test", "development")
@@ -126,15 +126,15 @@ def _feature_doc() -> tuple[str, dict[str, tuple[str, str]]] | None:
     return hero, panels
 
 
-def _tabs(tabs: list[tuple[str, str, str]]) -> str:
-    """A tab bar a link can open by key, and its panels; the first tab starts open."""
+def _tabs(tabs: list[tuple[str, str, str]]) -> tuple[str, str]:
+    """A row of section buttons a link can open by key, and the sections they switch between; the first starts open."""
     def button(n: int, key: str, label: str) -> str:
         sparkle = key == _SPARKLE_TAB
-        return f'<button type="button" role="tab" id="tab-btn-{key}" aria-controls="tab-{key}" aria-selected="{str(n == 0).lower()}" data-panel="tab-{key}" data-key="{key}"{' class="tab-sparkle"' if sparkle else ""}>{'<span class="sparkle-star" aria-hidden="true">✦</span>' if sparkle else ""}{esc(label)}</button>'
+        return f'<button type="button" role="tab" id="tab-btn-{key}" aria-controls="tab-{key}" aria-selected="{str(n == 0).lower()}" data-panel="tab-{key}" data-key="{key}" class="btn{" tab-sparkle" if sparkle else ""}">{'<span class="sparkle-star" aria-hidden="true">✦</span>' if sparkle else ""}{esc(label)}</button>'
 
     bar = "".join(button(n, key, label) for n, (key, label, _content) in enumerate(tabs))
     panels = "".join(f'<section id="tab-{key}" role="tabpanel" aria-labelledby="tab-btn-{key}" class="feature-panel"{"" if n == 0 else " hidden"}>{content}</section>' for n, (key, _label, content) in enumerate(tabs))
-    return f'<div class="tabs feature-tabs" role="tablist" aria-label="Sections" data-tabs data-hash-tabs>{bar}</div>{panels}'
+    return f'<div class="show-cta section-switch" role="tablist" aria-label="Sections" data-tabs data-hash-tabs>{bar}</div>', panels
 
 
 @router.get("/media/{name}")
@@ -243,7 +243,8 @@ def api_docs() -> HTMLResponse:
         swagger = '<p class="swagger-open"><a href="/docs" target="_blank" rel="noopener">Open Swagger in its own tab</a> · <a href="/openapi.json">openapi.json</a></p><iframe class="swagger-frame" src="/docs" title="Swagger UI" loading="lazy"></iframe>'
     else:
         swagger = f"""<div class="banner info doc-banner">{icon("info")}<div>Swagger UI is switched off on this deployment. Run the app locally (<code>make run</code>) and open this tab, or <a href="http://localhost:8000/docs">localhost:8000/docs</a>.</div></div>"""
-    body = _tabs([("reference", "Reference", reference), ("swagger", "Swagger", swagger)])
+    bar, sections = _tabs([("reference", "Reference", reference), ("swagger", "Swagger", swagger)])
+    body = bar + sections
     return public_page("API docs", body, active="api", description="radreport's HTTP API: every route, who may call it, and what it does.")
 
 
@@ -285,26 +286,27 @@ def recruiter() -> HTMLResponse:
         for glyph, title, text, points in _BUILT
     )
     stack = "".join(f'<span class="chip">{esc(item)}</span>' for item in _STACK)
-    body = """
+    hero = """
     <section class="show-hero">
       <div class="eyebrow">Project overview</div>
       <h1>radreport: radiology reports, dictated once and checked before they leave.</h1>
       <p class="lead">A multi-lab platform that turns a radiologist's dictation into a structured, grounded draft, puts the risky parts in front of a person, and earns the right to skip review only where the evidence says it is safe. Built as a production-shaped system: isolation in the database, every route declared, measured performance work, and a test suite that tries to break it.</p>
-      <div class="show-cta"><a class="btn primary" href="/">Try the demo</a><a class="btn" href="#hld">System design</a><a class="btn" href="#crash-test">Run the tests</a></div>
+      {bar}
     </section>"""
     doc = _feature_doc()
     panels = doc[1] if doc else {}
     overview = f"""<section class="show-stats" aria-label="Project in numbers">{stat_html}</section>
     <section><h2 class="show-h2">What it demonstrates</h2><div class="show-grid">{built}</div></section>
     <section><h2 class="show-h2">Built with</h2><div class="chips">{stack}</div></section>"""
-    if "in-action" in panels:
-        overview += f'<div class="tour-recordings">{panels["in-action"][1]}</div>'
-    tabs = [("in-action", "For Recruiters", overview)]
+    if "for-recruiters" in panels:
+        overview += f'<div class="tour-recordings">{panels["for-recruiters"][1]}</div>'
+    tabs = [("for-recruiters", "For Recruiters", overview)]
     for key in ("hld", "crash-test"):
         if key in panels:
             label, content = panels[key]
             tabs.append((key, label, _test_runner() + content if key == "crash-test" else content))
-    body += _tabs(tabs)
+    bar, sections = _tabs(tabs)
+    body = hero.replace("{bar}", bar) + sections
     return public_page("Recruiter tour", body, active="recruiter", description="radreport, a multi-lab radiology reporting platform: what it demonstrates in numbers, recordings of it running, its system design and a crash test.", scripts=("showtime.js",), styles=("showtime.css",))
 
 

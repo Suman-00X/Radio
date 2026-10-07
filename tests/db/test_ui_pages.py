@@ -94,7 +94,7 @@ def test_a_read_only_role_sees_the_controls_it_cannot_use_disabled(migrated_db: 
 
 def test_public_pages_and_sign_in_pages(migrated_db: str) -> None:
     client = TestClient(create_app())
-    for path, active in (("/", "Try"), ("/recruiter", "Recruiter"), ("/features", "Features"), ("/api-docs", "API docs")):
+    for path, active in (("/", "Try the demo"), ("/recruiter", "Recruiter tour"), ("/features", "Features"), ("/api-docs", "API docs")):
         response = client.get(path)
         assert response.status_code == 200, path
         _check_frame(path, response.text)
@@ -110,7 +110,7 @@ def test_public_pages_and_sign_in_pages(migrated_db: str) -> None:
     assert 'role="tab"' not in features
     assert features.count("data-dialog-open=") == features.count("<dialog") > 20, "every feature carries a Reason dialog"
     recruiter = client.get("/recruiter").text
-    assert recruiter.count('role="tab"') == 3 and 'data-key="in-action"' in recruiter and 'data-key="demo"' not in recruiter
+    assert recruiter.count('role="tab"') == 3 and 'data-key="for-recruiters"' in recruiter and 'data-key="demo"' not in recruiter
     assert '<svg viewBox="0 0 1100 580"' in recruiter, "the system-design tab draws the architecture"
     assert "HTTP routes" in recruiter and "test functions" in recruiter
     for path in ("/admin/login", "/ui/login"):

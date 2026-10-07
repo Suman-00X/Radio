@@ -61,13 +61,15 @@ def test_the_features_page_is_one_page_without_tabs() -> None:
 
 def test_the_recruiter_tour_has_its_tabs_in_order_and_the_crash_results() -> None:
     page = TestClient(create_app()).get("/recruiter").text
-    keys = ("in-action", "hld", "crash-test")
+    keys = ("for-recruiters", "hld", "crash-test")
     assert page.count('role="tab"') == 3 and all(f'data-key="{key}"' in page for key in keys)
     assert [page.index(f'data-key="{key}"') for key in keys] == sorted(page.index(f'data-key="{key}"') for key in keys)
-    overview = page.split('id="tab-in-action"', 1)[1].split('id="tab-hld"', 1)[0]
+    overview = page.split('id="tab-for-recruiters"', 1)[1].split('id="tab-hld"', 1)[0]
     assert ">For Recruiters</button>" in page and "HTTP routes" in overview and "<video" in overview, "the numbers and recordings sit in the For Recruiters tab"
-    assert "HTTP routes" not in page.split('id="tab-in-action"', 1)[0], "no numbers above the tabs"
-    assert 'class="tab-sparkle"' in page.split('data-key="crash-test"', 1)[1].split(">", 1)[0], "the crash-test tab sparkles"
+    assert "HTTP routes" not in page.split('id="tab-for-recruiters"', 1)[0], "no numbers above the tabs"
+    assert 'class="btn tab-sparkle"' in page.split('data-key="crash-test"', 1)[1].split(">", 1)[0], "the crash-test tab sparkles"
+    hero = page.split('<section class="show-hero">', 1)[1].split("</section>", 1)[0]
+    assert 'class="show-cta section-switch"' in hero and "feature-tabs" not in page, "the hero's buttons are the only section switch"
     assert 'data-test-run="/recruiter/tests/stream"' in page and "showtime.js" in page, "the test environment offers the live run"
     assert "failures handled as designed" in page, "the crash-test report is included"
     assert "<!--" not in page.split("<main", 1)[1], "no marker leaks into the page"

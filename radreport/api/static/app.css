@@ -544,7 +544,6 @@ body.public { background: var(--bg); min-height: 100vh; display: flex; flex-dire
 .feature-hero { padding-bottom: 4px; }
 .feature-hero h1 { margin-top: 0; }
 .feature-hero p:first-of-type strong { font-size: 18px; }
-.feature-tabs { margin: 18px 0 26px; }
 .md p.named { margin: 18px 0 8px; }
 .md .named-title { display: block; font-size: 16px; margin-bottom: 2px; }
 .feature-panel .doc-toc .toc-2 > a, .feature-single .doc-toc .toc-2 > a { padding-left: 8px; font-weight: 600; color: var(--fg); }
@@ -581,24 +580,27 @@ body.public { background: var(--bg); min-height: 100vh; display: flex; flex-dire
 .arch-dashed { stroke-dasharray: 5 4; }
 .arch-head { fill: var(--faint); }
 @media (max-width: 760px) { #tab-crash-test table td:last-child { white-space: normal; } }
-.feature-tabs { scroll-margin-top: 84px; }
+.section-switch { scroll-margin-top: 84px; }
+main > .section-switch { margin: 0 0 22px; }
+.show-hero + .feature-panel { margin-top: 26px; }
+.section-switch .btn[aria-selected="true"] { --btn-fg: var(--brand-fg); --btn-line: transparent; color: var(--brand-fg); background: var(--brand-gradient); box-shadow: 0 8px 20px -10px rgba(79, 70, 229, .8); }
 .media { margin: 14px 0 22px; }
 .media video { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); box-shadow: var(--shadow); }
 .media figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
 /* Recruiter tour: the single-page features layout, and the sparkling "For Recruiters" tab that asks to be opened. */
 .feature-single { margin-top: 18px; }
 .tour-demo { max-width: 920px; }
-.tabs button.tab-sparkle { position: relative; display: inline-flex; align-items: center; gap: 6px; color: var(--brand); background: linear-gradient(110deg, var(--brand-soft) 0%, var(--brand-soft) 40%, color-mix(in srgb, var(--brand) 22%, var(--surface)) 50%, var(--brand-soft) 60%, var(--brand-soft) 100%); background-size: 250% 100%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent); animation: tab-shimmer 2.6s linear infinite, tab-glow 2.6s ease-in-out infinite; }
-.tabs button.tab-sparkle[aria-selected="true"] { color: var(--fg); background: var(--surface); animation: none; box-shadow: var(--shadow-sm), 0 0 0 1px color-mix(in srgb, var(--brand) 35%, transparent); }
+button.tab-sparkle { position: relative; display: inline-flex; align-items: center; gap: 6px; color: var(--brand); background: linear-gradient(110deg, var(--brand-soft) 0%, var(--brand-soft) 40%, color-mix(in srgb, var(--brand) 22%, var(--surface)) 50%, var(--brand-soft) 60%, var(--brand-soft) 100%); background-size: 250% 100%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent); animation: tab-shimmer 2.6s linear infinite, tab-glow 2.6s ease-in-out infinite; }
+button.tab-sparkle[aria-selected="true"] { color: var(--brand-fg); background: var(--brand-gradient); animation: none; box-shadow: 0 8px 20px -10px rgba(79, 70, 229, .8); }
 .sparkle-star { display: inline-block; font-size: 12px; line-height: 1; color: var(--brand); animation: star-twinkle 1.3s ease-in-out infinite; }
-.tabs button.tab-sparkle[aria-selected="true"] .sparkle-star { animation: none; }
-.tabs button.tab-sparkle::after { content: "✦"; position: absolute; top: 2px; right: 3px; font-size: 9px; color: var(--brand); opacity: 0; animation: star-pop 2.6s ease-in-out infinite .9s; pointer-events: none; }
-.tabs button.tab-sparkle[aria-selected="true"]::after { display: none; }
+button.tab-sparkle[aria-selected="true"] .sparkle-star { animation: none; color: inherit; }
+button.tab-sparkle::after { content: "✦"; position: absolute; top: 2px; right: 3px; font-size: 9px; color: var(--brand); opacity: 0; animation: star-pop 2.6s ease-in-out infinite .9s; pointer-events: none; }
+button.tab-sparkle[aria-selected="true"]::after { display: none; }
 @keyframes tab-shimmer { from { background-position: 125% 0; } to { background-position: -125% 0; } }
 @keyframes tab-glow { 0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent); } 50% { box-shadow: 0 0 0 1px var(--brand), 0 0 14px color-mix(in srgb, var(--brand) 45%, transparent); } }
 @keyframes star-twinkle { 0%, 100% { transform: scale(1) rotate(0); opacity: 1; } 50% { transform: scale(1.35) rotate(45deg); opacity: .65; } }
 @keyframes star-pop { 0%, 60%, 100% { opacity: 0; transform: scale(.4); } 70% { opacity: 1; transform: scale(1.1); } 85% { opacity: 0; transform: scale(.6) translate(3px, -3px); } }
-@media (prefers-reduced-motion: reduce) { .tabs button.tab-sparkle, .sparkle-star, .tabs button.tab-sparkle::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { button.tab-sparkle, .sparkle-star, button.tab-sparkle::after { animation: none; } }
 /* Landing page: the product in a few lines on the left, a small sign-in box with the demo accounts in the corner. */
 .home { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: clamp(20px, 4vw, 48px); align-items: start; padding: clamp(24px, 5vw, 56px) clamp(20px, 4vw, 48px); border-radius: var(--radius-lg); border: 1px solid var(--line); background: radial-gradient(1000px 380px at 0% -10%, color-mix(in srgb, var(--brand) 22%, transparent), transparent), radial-gradient(700px 320px at 100% 110%, color-mix(in srgb, var(--brand-2) 18%, transparent), transparent), var(--surface); }
 .home .eyebrow { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); background: var(--brand-soft); padding: 5px 10px; border-radius: 999px; }
