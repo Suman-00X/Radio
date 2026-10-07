@@ -367,7 +367,7 @@ def cache_down(url: str) -> Outcome:
     import httpx
 
     with _Server(url, RADREPORT_REDIS_URL=f"redis://127.0.0.1:{_free_port()}/0") as server:
-        pages = [httpx.get(f"{server.base}{path}", timeout=15).status_code for path in ("/features", "/demo", "/recruiter", "/api-docs")]
+        pages = [httpx.get(f"{server.base}{path}", timeout=15).status_code for path in ("/", "/recruiter", "/features", "/api-docs")]
         health = httpx.get(f"{server.base}/health", timeout=15).json()
     cache = health.get("checks", {}).get("cache", {})
     ok = all(code == 200 for code in pages) and cache.get("ok") is False

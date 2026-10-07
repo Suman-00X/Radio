@@ -599,3 +599,32 @@ body.public { background: var(--bg); min-height: 100vh; display: flex; flex-dire
 @keyframes star-twinkle { 0%, 100% { transform: scale(1) rotate(0); opacity: 1; } 50% { transform: scale(1.35) rotate(45deg); opacity: .65; } }
 @keyframes star-pop { 0%, 60%, 100% { opacity: 0; transform: scale(.4); } 70% { opacity: 1; transform: scale(1.1); } 85% { opacity: 0; transform: scale(.6) translate(3px, -3px); } }
 @media (prefers-reduced-motion: reduce) { .tabs button.tab-sparkle, .sparkle-star, .tabs button.tab-sparkle::after { animation: none; } }
+/* Landing page: the product in a few lines on the left, a small sign-in box with the demo accounts in the corner. */
+.home { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: clamp(20px, 4vw, 48px); align-items: start; padding: clamp(24px, 5vw, 56px) clamp(20px, 4vw, 48px); border-radius: var(--radius-lg); border: 1px solid var(--line); background: radial-gradient(1000px 380px at 0% -10%, color-mix(in srgb, var(--brand) 22%, transparent), transparent), radial-gradient(700px 320px at 100% 110%, color-mix(in srgb, var(--brand-2) 18%, transparent), transparent), var(--surface); }
+.home .eyebrow { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); background: var(--brand-soft); padding: 5px 10px; border-radius: 999px; }
+.home h1 { font-size: clamp(30px, 4.4vw, 50px); letter-spacing: -.025em; line-height: 1.08; margin: 16px 0 14px; max-width: 16ch; }
+.home .lead { font-size: clamp(16px, 1.5vw, 18px); color: var(--fg-soft); line-height: 1.65; max-width: 60ch; margin: 0; }
+.home-intro { min-width: 0; }
+.home-points { display: grid; gap: 14px; margin: 26px 0 22px; max-width: 62ch; }
+.home-point { display: flex; gap: 12px; align-items: flex-start; }
+.home-point-icon { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: var(--brand-soft); color: var(--brand); }
+.home-point-icon svg { width: 18px; height: 18px; }
+.home-point strong { font-size: 15px; }
+.home-point p { margin: 2px 0 0; color: var(--fg-soft); font-size: 14.5px; line-height: 1.55; }
+.home-try { margin: 0; color: var(--fg-soft); font-size: 14.5px; max-width: 62ch; }
+.home-box { position: sticky; top: 88px; padding: 16px 16px 12px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); font-size: 14px; }
+.home-box-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.home-box-head strong { font-size: 16px; }
+.home-box .tabs { margin-bottom: 10px; }
+.home-box .tabs button { flex: 1; justify-content: center; }
+.home-box label { font-size: 12.5px; margin-top: 8px; }
+.home-box input { padding: 8px 10px; font-size: 14px; }
+.home-box .actions { margin-top: 12px; }
+.home-box .actions button { width: 100%; justify-content: center; }
+.home-demo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.home-demo button { color: var(--brand); }
+.home-hint { margin: 10px 0 0; font-size: 12px; }
+@media (max-width: 900px) {
+  .home { grid-template-columns: minmax(0, 1fr); }
+  .home-box { position: static; max-width: 420px; }
+}

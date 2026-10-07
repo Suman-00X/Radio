@@ -19,7 +19,7 @@ from tests.db.review_factory import build_signed_report
 pytestmark = pytest.mark.db
 
 STATIC = Path("radreport/api/static")
-CSS = (STATIC / "app.css").read_text() + (STATIC / "review.css").read_text()
+CSS = (STATIC / "app.css").read_text() + (STATIC / "review.css").read_text() + (STATIC / "showtime.css").read_text()
 DEFINED = set(re.findall(r"\.([a-zA-Z][\w-]*)", re.sub(r"url\([^)]*\)|\d+\.\d+", "", CSS)))
 #: Classes that are hooks for scripts or state, not styling.
 UNSTYLED_OK = {"fade-in", "num", "right", "nowrap", "here", "task", "language-python", "language-bash", "language-sh", "language-json", "language-xml", "language-text", "anchor"}
@@ -94,18 +94,23 @@ def test_a_read_only_role_sees_the_controls_it_cannot_use_disabled(migrated_db: 
 
 def test_public_pages_and_sign_in_pages(migrated_db: str) -> None:
     client = TestClient(create_app())
-    for path, active in (("/features", "Features"), ("/demo", "Try the demo"), ("/api-docs", "API docs"), ("/recruiter", "Recruiter tour")):
+    for path, active in (("/", "Try"), ("/recruiter", "Recruiter"), ("/features", "Features"), ("/api-docs", "API docs")):
         response = client.get(path)
         assert response.status_code == 200, path
         _check_frame(path, response.text)
         assert f'aria-current="page">{active}</a>' in response.text, f"{path}: the current page is not marked"
         assert 'class="public-menu-toggle"' in response.text, f"{path}: no phone menu"
     assert 'id="phase-0--is-the-service-up"' in client.get("/api-docs").text, "headings carry the anchors the docs link to"
+    old_demo = client.get("/demo", follow_redirects=False)
+    assert old_demo.status_code == 308 and old_demo.headers["location"] == "/", "the old demo page forwards to the landing page"
+    home = client.get("/").text
+    assert 'action="/ui/login"' in home and 'action="/admin/login"' in home, "the landing page has the small sign-in box"
+    assert "HTTP routes" not in home, "the project numbers live on the recruiter tour only"
     features = client.get("/features").text
     assert 'role="tab"' not in features
     assert features.count("data-dialog-open=") == features.count("<dialog") > 20, "every feature carries a Reason dialog"
     recruiter = client.get("/recruiter").text
-    assert recruiter.count('role="tab"') == 4 and 'data-key="demo"' in recruiter and 'data-key="in-action"' in recruiter
+    assert recruiter.count('role="tab"') == 3 and 'data-key="in-action"' in recruiter and 'data-key="demo"' not in recruiter
     assert '<svg viewBox="0 0 1100 580"' in recruiter, "the system-design tab draws the architecture"
     assert "HTTP routes" in recruiter and "test functions" in recruiter
     for path in ("/admin/login", "/ui/login"):
@@ -120,11 +125,11 @@ def test_only_read_only_demo_accounts_are_ever_shown(migrated_db: str, monkeypat
     get_settings.cache_clear()
     try:
         client = TestClient(create_app())
-        admin_login, lab_login, recruiter, demo = client.get("/admin/login").text, client.get("/ui/login").text, client.get("/recruiter").text, client.get("/demo").text
+        admin_login, lab_login, home = client.get("/admin/login").text, client.get("/ui/login").text, client.get("/").text
         assert "Test credentials" in admin_login and "pw-support" in admin_login and "pw-auditor" not in admin_login
         assert "Test credentials" in lab_login and "pw-auditor" in lab_login and 'data-fill-lab="sunrise"' in lab_login and "pw-support" not in lab_login
-        assert "pw-support" in recruiter and "pw-auditor" in recruiter and "pw-support" in demo and "pw-auditor" in demo
-        for page in (admin_login, lab_login, recruiter, demo):
+        assert "pw-support" in home and "pw-auditor" in home and 'data-fill-prefix="admin-"' in home
+        for page in (admin_login, lab_login, home):
             assert "pw-admin" not in page and "pw-rad" not in page, "a write-capable account must never be published"
     finally:
         get_settings.cache_clear()

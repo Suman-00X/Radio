@@ -1,27 +1,31 @@
-"""The public pages: what the product does, a way into the demo, its HTTP API, and a tour of the project for recruiters.
+"""The public pages: a landing page to try the product, a tour of the project for recruiters, what the product does, and its HTTP API.
 
-Order: FEATURES.md is split at its tab markers; the features page renders the features tab, each
-feature with its Reason (features) -> the demo page lists the read-only demo sign-ins (demo) -> the
+Order: the landing page says what radreport is, with a small sign-in box holding the read-only demo
+accounts (home; /demo forwards there) -> the recruiter tour has three tabs: For Recruiters (numbers
+counted from the code itself, what it demonstrates, the stack and the screen recordings), System
+design (with the architecture diagram) and Crash test (the crash test's last results under a button
+that runs the whole test suite live where the environment allows it) (recruiter) -> that button's
+stream of results, one server-sent event per test (test_run) -> FEATURES.md is split at its tab
+markers; the features page renders the features tab, each feature with its Reason (features) -> the
 API page renders API.md beside a table of contents and points at the live OpenAPI docs where the
-environment serves them (api_docs) -> the recruiter tour summarises what was built, with numbers
-counted from the code itself, then tabs: the demo sign-ins, the screen recordings, the system design
-with the architecture diagram, and the crash test's last results (recruiter). Nothing here needs a
-sign-in or reads lab data.
+environment serves them (api_docs). Nothing here needs a sign-in or reads lab data.
 """
 
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import AsyncIterator
 from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 
 from radreport.api.diagram import ARCHITECTURE_SVG
 from radreport.api.markdown import render
 from radreport.api.routing import BridgedRoute
-from radreport.api.ui import demo_accounts, demo_credentials, esc, icon, public_page
+from radreport.api.ui import demo_accounts, esc, icon, public_page
 
 router = APIRouter(tags=["public"], route_class=BridgedRoute)
 
@@ -34,9 +38,11 @@ def _doc(name: str) -> str | None:
     return path.read_text(encoding="utf-8") if path.is_file() else None
 
 
-#: The FEATURES.md tabs shown on the recruiter tour, in order, after its own demo tab; the rest is the features page.
+#: The FEATURES.md tabs shown on the recruiter tour, in order; the rest is the features page.
 _TOUR_TABS = ("in-action", "hld", "crash-test")
-_SPARKLE_TAB = "in-action"
+_SPARKLE_TAB = "crash-test"
+#: Where the test suite may be run from the recruiter tour; the access policy refuses the stream everywhere else.
+_LIVE_ENVIRONMENTS = ("local", "test", "development")
 
 
 def _site_link(href: str) -> str | None:
@@ -151,24 +157,74 @@ def features() -> HTMLResponse:
     return public_page("Features", body, active="features", description="What radreport does: dictation in, a structured, checked report out.")
 
 
-def _demo_section() -> str:
-    """The read-only demo sign-ins for the admin panel and the lab screens, or why there are none."""
-    admin_demo, lab_demo = demo_accounts("admin"), demo_accounts("lab")
-    intro = "<p>The demo lab, Sunrise Imaging, holds synthetic data only: templates, a report history, drafts at every stage, signed and graded reports, critical alerts and lexicon suggestions. The accounts below can open every screen and change nothing.</p>"
-    if not (admin_demo or lab_demo):
-        return intro + '<p class="meta">No demo sign-ins are configured on this deployment. Set <code>RADREPORT_DEMO_ACCOUNTS</code> to read-only accounts (support for the admin panel, an auditor for a lab) to show them here.</p>'
-    return f"""{intro}<div class="show-demo">
-      <div><h3>{icon("labs")} Admin panel</h3>{demo_credentials("admin") if admin_demo else '<p class="meta">No admin demo account on this deployment.</p>'}<a class="btn primary" href="/admin/login">Open the admin panel</a></div>
-      <div><h3>{icon("queue")} Lab screens</h3>{demo_credentials("lab") if lab_demo else '<p class="meta">No lab demo account on this deployment.</p>'}<a class="btn primary" href="/ui/login">Open the lab screens</a></div>
-    </div>"""
+def _demo_fill(realm: str, prefix: str, tab: str) -> str:
+    """One button per read-only demo account that fills the sign-in box's form for that realm."""
+    return "".join(
+        f'<button type="button" class="sm ghost" data-fill-prefix="{prefix}" data-fill-tab="{tab}" data-fill-email="{esc(a.email)}" data-fill-password="{esc(a.password)}" data-fill-lab="{esc(a.lab or "")}">{icon("arrow")}{esc(a.label)}</button>'
+        for a in demo_accounts(realm)
+    )
 
 
-@router.get("/demo", response_class=HTMLResponse)
-def demo() -> HTMLResponse:
-    """The read-only demo sign-ins, one click from every public page."""
-    body = f"""<section class="show-hero"><div class="eyebrow">Try the demo</div><h1>Open radreport with a read-only account.</h1></section>
-    <section>{_demo_section()}</section>"""
-    return public_page("Try the demo", body, active="demo", description="Read-only demo sign-ins for radreport's admin panel and lab screens, on synthetic data.")
+def _sign_in_box() -> str:
+    """The landing page's small sign-in box: the lab screens or the admin panel, each with its demo accounts one click away."""
+    lab_fill, admin_fill = _demo_fill("lab", "", "home-tab-lab"), _demo_fill("admin", "admin-", "home-tab-admin")
+    hint = '<p class="meta home-hint">Read-only demo accounts: they open every screen and change nothing.</p>' if lab_fill or admin_fill else '<p class="meta home-hint">No demo accounts are configured on this deployment.</p>'
+    return f"""<aside class="home-box" aria-label="Sign in">
+      <div class="home-box-head"><strong>Sign in</strong><span class="meta">Synthetic data only</span></div>
+      <div class="tabs" role="tablist" data-tabs>
+        <button type="button" role="tab" id="home-tab-lab" aria-selected="true" data-panel="home-panel-lab">Lab screens</button>
+        <button type="button" role="tab" id="home-tab-admin" aria-selected="false" data-panel="home-panel-admin">Admin panel</button>
+      </div>
+      <div id="home-panel-lab" role="tabpanel">
+        <form method="post" action="/ui/login">
+          <label for="lab">Lab</label><input id="lab" name="lab" required autocomplete="organization" pattern="[a-z0-9][a-z0-9-]{{1,62}}" placeholder="your-lab">
+          <label for="email">Email</label><input id="email" name="email" type="email" required autocomplete="username" placeholder="you@hospital.org">
+          <label for="password">Password</label><input id="password" name="password" type="password" required autocomplete="current-password" placeholder="••••••••••••">
+          <div class="actions"><button class="primary" type="submit">Sign in to the lab</button></div>
+        </form>
+        {f'<div class="home-demo"><span class="meta">Demo:</span>{lab_fill}</div>' if lab_fill else ""}
+      </div>
+      <div id="home-panel-admin" role="tabpanel" hidden>
+        <form method="post" action="/admin/login">
+          <label for="admin-email">Email</label><input id="admin-email" name="email" type="email" required autocomplete="username" placeholder="you@company.com">
+          <label for="admin-password">Password</label><input id="admin-password" name="password" type="password" required autocomplete="current-password" placeholder="••••••••••••">
+          <div class="actions"><button class="primary" type="submit">Sign in to the admin panel</button></div>
+        </form>
+        {f'<div class="home-demo"><span class="meta">Demo:</span>{admin_fill}</div>' if admin_fill else ""}
+      </div>
+      {hint}
+    </aside>"""
+
+
+_HOME_POINTS: tuple[tuple[str, str, str], ...] = (
+    ("mic", "Speak, don't type", "A radiologist dictates as usual; radreport fills the lab's own report template, field by field."),
+    ("shield", "Checked before it leaves", "Every value is traced back to the audio that supports it. Anything risky or unsure is shown first."),
+    ("queue", "A short review, then sign", "Urgent findings raise an alert, the doctor confirms the draft, and the report goes out in HL7 or FHIR."),
+)
+
+
+@router.get("/", response_class=HTMLResponse)
+def home() -> HTMLResponse:
+    """The landing page: what radreport is, and a way to try it with a read-only demo account."""
+    points = "".join(f'<div class="home-point"><span class="home-point-icon">{icon(glyph)}</span><div><strong>{esc(title)}</strong><p>{esc(text)}</p></div></div>' for glyph, title, text in _HOME_POINTS)
+    body = f"""<section class="home">
+      <div class="home-intro">
+        <div class="eyebrow">Radiology reporting</div>
+        <h1>Dictate once. Get back a finished, checked report.</h1>
+        <p class="lead">radreport turns a radiologist's spoken dictation into a structured report in the lab's own format, double-checks its own work, and puts anything risky in front of a person before it is signed.</p>
+        <div class="home-points">{points}</div>
+        <p class="home-try">Try it now: pick a demo account in the sign-in box. The demo lab, Sunrise Imaging, holds synthetic reports at every stage, from fresh drafts to signed and graded ones.</p>
+        <div class="show-cta"><a class="btn" href="/recruiter">For recruiters</a><a class="btn" href="/features">All features</a><a class="btn" href="/api-docs">API docs</a></div>
+      </div>
+      {_sign_in_box()}
+    </section>"""
+    return public_page("Try the demo", body, active="home", description="radreport turns a radiologist's dictation into a structured, checked report. Try it with a read-only demo account.")
+
+
+@router.get("/demo")
+def demo() -> RedirectResponse:
+    """The old demo page; the landing page holds the demo sign-ins now."""
+    return RedirectResponse("/", status_code=status.HTTP_308_PERMANENT_REDIRECT)
 
 
 @router.get("/api-docs", response_class=HTMLResponse)
@@ -229,22 +285,56 @@ def recruiter() -> HTMLResponse:
         for glyph, title, text, points in _BUILT
     )
     stack = "".join(f'<span class="chip">{esc(item)}</span>' for item in _STACK)
-    body = f"""
+    body = """
     <section class="show-hero">
       <div class="eyebrow">Project overview</div>
       <h1>radreport: radiology reports, dictated once and checked before they leave.</h1>
       <p class="lead">A multi-lab platform that turns a radiologist's dictation into a structured, grounded draft, puts the risky parts in front of a person, and earns the right to skip review only where the evidence says it is safe. Built as a production-shaped system: isolation in the database, every route declared, measured performance work, and a test suite that tries to break it.</p>
-      <div class="show-cta"><a class="btn primary" href="#demo">Try the demo</a><a class="btn" href="#in-action">For Recruiters</a><a class="btn" href="/features">Features</a><a class="btn" href="/api-docs">API docs</a></div>
-    </section>
-    <section class="show-stats" aria-label="Project in numbers">{stat_html}</section>"""
+      <div class="show-cta"><a class="btn primary" href="/">Try the demo</a><a class="btn" href="#hld">System design</a><a class="btn" href="#crash-test">Run the tests</a></div>
+    </section>"""
     doc = _feature_doc()
     panels = doc[1] if doc else {}
-    design = f"""<section><h2 class="show-h2">What it demonstrates</h2><div class="show-grid">{built}</div></section>
+    overview = f"""<section class="show-stats" aria-label="Project in numbers">{stat_html}</section>
+    <section><h2 class="show-h2">What it demonstrates</h2><div class="show-grid">{built}</div></section>
     <section><h2 class="show-h2">Built with</h2><div class="chips">{stack}</div></section>"""
-    tabs = [("demo", "Try the demo", f'<div class="tour-demo">{_demo_section()}</div>')]
-    for key in _TOUR_TABS:
+    if "in-action" in panels:
+        overview += f'<div class="tour-recordings">{panels["in-action"][1]}</div>'
+    tabs = [("in-action", "For Recruiters", overview)]
+    for key in ("hld", "crash-test"):
         if key in panels:
             label, content = panels[key]
-            tabs.append((key, label, design + content if key == "hld" else content))
+            tabs.append((key, label, _test_runner() + content if key == "crash-test" else content))
     body += _tabs(tabs)
-    return public_page("Recruiter tour", body, active="recruiter", description="radreport, a multi-lab radiology reporting platform: how to try it, recordings of it running, its system design and a crash test.")
+    return public_page("Recruiter tour", body, active="recruiter", description="radreport, a multi-lab radiology reporting platform: what it demonstrates in numbers, recordings of it running, its system design and a crash test.", scripts=("showtime.js",), styles=("showtime.css",))
+
+
+def _test_runner() -> str:
+    """The button that runs every test live, or why this deployment does not offer it."""
+    from radreport.core.config import get_settings
+
+    total = project_numbers()["tests"]
+    if get_settings().environment not in _LIVE_ENVIRONMENTS or not (_ROOT / "tests").is_dir():
+        return f"""<div class="banner info doc-banner">{icon("info")}<div>The live test run is available on local and development deployments. Run the app locally (<code>make run</code>) and open this tab to watch all {total:,} test functions run.</div></div>"""
+    return """<section class="run-card" data-test-run="/recruiter/tests/stream">
+      <div><div class="run-eyebrow">Live</div><h3>Run the whole test suite, now</h3><p>Every unit, integration and database test runs on this server while you watch. Database tests skip when no test database is configured.</p></div>
+      <button type="button" class="btn primary run-go" data-test-run-go><span class="run-go-dot" aria-hidden="true"></span>Run all tests</button>
+    </section>"""
+
+
+def _sse(event: dict[str, object]) -> str:
+    return f"data: {json.dumps(event)}\n\n"
+
+
+@router.get("/recruiter/tests/stream")
+async def test_run() -> StreamingResponse:
+    """Runs the test suite and streams each result as a server-sent event, ending with a summary."""
+    from radreport.devtools.test_stream import SuiteBusy, run_suite
+
+    async def events() -> AsyncIterator[str]:
+        try:
+            async for event in run_suite():
+                yield _sse(event)
+        except SuiteBusy as busy:
+            yield _sse({"type": "busy", "message": str(busy)})
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})

@@ -72,15 +72,19 @@ document.addEventListener("DOMContentLoaded", () => {
     );
   });
 
+  // Demo-account buttons fill a sign-in form; a page with two forms names its fields with a prefix and the tab to open.
   document.querySelectorAll("[data-fill-email]").forEach((button) =>
     button.addEventListener("click", () => {
-      const email = document.getElementById("email");
-      const password = document.getElementById("password");
+      const prefix = button.dataset.fillPrefix || "";
+      const email = document.getElementById(prefix + "email");
+      const password = document.getElementById(prefix + "password");
       if (email) email.value = button.dataset.fillEmail;
       if (password) password.value = button.dataset.fillPassword;
-      const lab = document.getElementById("lab");
+      const lab = document.getElementById(prefix + "lab");
       if (lab && button.dataset.fillLab) lab.value = button.dataset.fillLab;
-      document.querySelector("[data-tabs] [role=tab]")?.click();
+      const tab = button.dataset.fillTab ? document.getElementById(button.dataset.fillTab) : document.querySelector("[data-tabs] [role=tab]");
+      tab?.click();
+      email?.closest("form")?.querySelector("[type=submit]")?.focus();
     }),
   );
 

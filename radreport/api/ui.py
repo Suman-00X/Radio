@@ -207,7 +207,7 @@ def auth_page(title: str, card_html: str, *, subtitle: str, realm: str) -> HTMLR
 </body></html>""")
 
 
-PUBLIC_NAV: tuple[tuple[str, str, str], ...] = (("features", "Features", "/features"), ("demo", "Try the demo", "/demo"), ("api", "API docs", "/api-docs"), ("recruiter", "Recruiter tour", "/recruiter"))
+PUBLIC_NAV: tuple[tuple[str, str, str], ...] = (("home", "Try", "/"), ("recruiter", "Recruiter", "/recruiter"), ("features", "Features", "/features"), ("api", "API docs", "/api-docs"))
 
 
 #: The only roles a demo sign-in shown to the public may have: each can see everything and change nothing.
@@ -249,15 +249,16 @@ def public_links() -> str:
     return '<nav class="public-links" aria-label="About radreport">' + "".join(f'<a href="{href}">{esc(label)}</a>' for _key, label, href in PUBLIC_NAV) + "</nav>"
 
 
-def public_page(title: str, body: str, *, active: str, description: str) -> HTMLResponse:
-    """A page anyone may open: the product's features, the demo sign-ins, its API, and the recruiter tour."""
+def public_page(title: str, body: str, *, active: str, description: str, scripts: tuple[str, ...] = (), styles: tuple[str, ...] = ()) -> HTMLResponse:
+    """A page anyone may open: the landing page with the demo sign-ins, the recruiter tour, the product's features and its API."""
     links = "".join(f'<a href="{href}"{' aria-current="page"' if key == active else ""}>{esc(label)}</a>' for key, label, href in PUBLIC_NAV)
-    head = _head(title, "radreport").replace("</head>", f'<meta name="description" content="{esc(description)}">\n</head>', 1)
+    extra = "".join(f'<link rel="stylesheet" href="{_asset(name)}">\n' for name in styles) + "".join(f'<script src="{_asset(name)}" defer></script>\n' for name in scripts)
+    head = _head(title, "radreport").replace("</head>", f'<meta name="description" content="{esc(description)}">\n{extra}</head>', 1)
     return HTMLResponse(f"""{head}
 <body class="public">
 <header class="public-top">
   <div class="public-bar">
-    {_brand("Radiology reporting", "/features")}
+    {_brand("Radiology reporting", "/")}
     <input type="checkbox" id="public-menu" class="public-menu-toggle" aria-label="Open menu">
     <label for="public-menu" class="public-menu-button ghost icon-btn" aria-hidden="true">{icon("menu")}</label>
     <nav class="public-nav" aria-label="Pages">{links}</nav>

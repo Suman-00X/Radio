@@ -20,21 +20,6 @@ Speech-to-text tools help with typing, but they create new risks. They mishear m
 4. **The doctor reviews and signs.** Risky or uncertain parts are shown first, and urgent findings raise an alert straight away.
 5. **The report goes to the hospital system** in the standard formats hospitals already use.
 
-## By the numbers
-
-| | |
-|---|---|
-| **17** | automated steps between "doctor speaks" and "report ready" |
-| **11** | AI-powered steps that can each run on a different model, chosen per lab |
-| **8** | guided steps to bring a new lab on board |
-| **68** | database tables, each lab's rows walled off |
-| **1,100+** | automated tests, including tests that try to read one lab's data from another |
-| **9 of 9** | deliberate crashes handled in the [crash test](FEATURES.md#crash-test) |
-| **500** | users at once in the load test, 99.99% of requests served |
-| **2** | hospital data standards supported for sending reports (HL7 v2 and FHIR R4) |
-| **3** | languages besides English for medical terms (Hindi, French, Spanish) |
-| **~31,000** | lines of code |
-
 ## Features
 
 ### For radiologists
@@ -237,6 +222,21 @@ The login page has a **Test credentials** tab with a ready-to-use read-only demo
 ### Admin panel — signed in as Support (support@radreport.local)
 
 <!-- media: admin-panel | The read-only admin account: every lab on the platform, then cost and usage -->
+
+## By the numbers
+
+| | |
+|---|---|
+| **17** | automated steps between "doctor speaks" and "report ready" |
+| **11** | AI-powered steps that can each run on a different model, chosen per lab |
+| **8** | guided steps to bring a new lab on board |
+| **68** | database tables, each lab's rows walled off |
+| **1,100+** | automated tests, including tests that try to read one lab's data from another |
+| **9 of 9** | deliberate crashes handled in the [crash test](FEATURES.md#crash-test) |
+| **500** | users at once in the load test, 99.99% of requests served |
+| **2** | hospital data standards supported for sending reports (HL7 v2 and FHIR R4) |
+| **3** | languages besides English for medical terms (Hindi, French, Spanish) |
+| **~31,000** | lines of code |
 
 <!-- tab: hld | System design -->
 

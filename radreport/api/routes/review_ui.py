@@ -119,7 +119,7 @@ def static_file(name: str, request: Request, v: str | None = None) -> Response:
     return Response(body, media_type="text/javascript" if name.endswith(".js") else "text/css", headers=headers)
 
 
-STATIC_ASSETS = frozenset({"review.js", "review.css", "app.js", "app.css"})
+STATIC_ASSETS = frozenset({"review.js", "review.css", "app.js", "app.css", "showtime.js", "showtime.css"})
 
 
 @lru_cache(maxsize=8)
