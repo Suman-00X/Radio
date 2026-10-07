@@ -13,6 +13,8 @@
 #   RADREPORT_DATABASE_URL           the app's connection (radreport_app_login), used as given, or
 #   RADREPORT_OWNER_DATABASE_URL     the owner's connection, from which the app's is derived by
 #   + RADREPORT_APP_DB_PASSWORD      swapping in radreport_app_login and this password.
+#   RADREPORT_REPLICA_HOST           a read replica's host (a Neon read replica compute); unless
+#                                    RADREPORT_DB__REPLICA_URL is set, it is the app's URL on this host.
 # A postgres:// or postgresql:// URL is rewritten to name the psycopg driver.
 set -euo pipefail
 
@@ -32,6 +34,17 @@ print(urlunsplit((owner.scheme, f"radreport_app_login:{password}@{host}", owner.
 EOF
 }
 
+replica_url_from_app() {
+  python - <<'EOF'
+import os
+from urllib.parse import urlsplit, urlunsplit
+
+app = urlsplit(os.environ["RADREPORT_DATABASE_URL"])
+credentials = app.netloc.rpartition("@")[0]
+print(urlunsplit((app.scheme, f"{credentials}@{os.environ['RADREPORT_REPLICA_HOST']}", app.path, app.query, "")))
+EOF
+}
+
 if [[ -n "${RADREPORT_OWNER_DATABASE_URL:-}" ]]; then
   export RADREPORT_OWNER_DATABASE_URL="$(psycopg_url "$RADREPORT_OWNER_DATABASE_URL")"
 fi
@@ -39,6 +52,12 @@ if [[ -n "${RADREPORT_DATABASE_URL:-}" ]]; then
   export RADREPORT_DATABASE_URL="$(psycopg_url "$RADREPORT_DATABASE_URL")"
 elif [[ -n "${RADREPORT_OWNER_DATABASE_URL:-}" && -n "${RADREPORT_APP_DB_PASSWORD:-}" ]]; then
   export RADREPORT_DATABASE_URL="$(app_url_from_owner)"
+fi
+if [[ -n "${RADREPORT_DB__REPLICA_URL:-}" ]]; then
+  export RADREPORT_DB__REPLICA_URL="$(psycopg_url "$RADREPORT_DB__REPLICA_URL")"
+elif [[ -n "${RADREPORT_REPLICA_HOST:-}" && -n "${RADREPORT_DATABASE_URL:-}" ]]; then
+  # Neon replicas share the primary's roles and passwords, so only the host changes; reads keep the app role's RLS.
+  export RADREPORT_DB__REPLICA_URL="$(replica_url_from_app)"
 fi
 
 command="${1:-web}"

@@ -18,6 +18,9 @@ envVarGroups:
         value: "2"
       - key: WORKER_CONCURRENCY
         value: "2"
+      # Speech recognition on Deepgram (Nova-3 Medical); the key is DEEPGRAM_API_KEY below.
+      - key: RADREPORT_ASR__ENGINE
+        value: deepgram
       # Generated once on the first sync; shared by every service.
       - key: RADREPORT_APP_DB_PASSWORD
         generateValue: true
@@ -45,6 +48,9 @@ services:
       # Prompted for on the first Blueprint sync.
       - key: RADREPORT_OWNER_DATABASE_URL
         sync: false
+      # Optional: a Neon read replica's host (no scheme, user or path); dashboards, lists and exports read from it while it is caught up.
+      - key: RADREPORT_REPLICA_HOST
+        sync: false
       - key: RADREPORT_STORAGE__BUCKET
         sync: false
       - key: RADREPORT_STORAGE__REGION
@@ -56,6 +62,9 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: DEEPGRAM_API_KEY
+        sync: false
+      # Gemini (OpenAI-compatible endpoint); the admin panel's gemini provider names this variable.
+      - key: GEMINI_API_KEY
         sync: false
       # Password of the first product admin (admin@radreport.local), set when the API seeds an empty database on its first start.
       - key: RADREPORT_SEED_ADMIN_PASSWORD
@@ -83,6 +92,8 @@ services:
           property: connectionString
       - key: RADREPORT_OWNER_DATABASE_URL
         fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_OWNER_DATABASE_URL}
+      - key: RADREPORT_REPLICA_HOST
+        fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_REPLICA_HOST}
       - key: RADREPORT_STORAGE__BUCKET
         fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_STORAGE__BUCKET}
       - key: RADREPORT_STORAGE__REGION
@@ -95,6 +106,8 @@ services:
         fromService: {type: web, name: radreport-web, envVarKey: ANTHROPIC_API_KEY}
       - key: DEEPGRAM_API_KEY
         fromService: {type: web, name: radreport-web, envVarKey: DEEPGRAM_API_KEY}
+      - key: GEMINI_API_KEY
+        fromService: {type: web, name: radreport-web, envVarKey: GEMINI_API_KEY}
 
   # Shared cache for lab config, roles, model assignments and admin sessions; reachable only from these services.
   - type: keyvalue
