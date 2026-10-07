@@ -58,8 +58,11 @@ class S3ObjectStore:
             self._client = client
         else:
             import boto3
+            from botocore.config import Config
 
-            self._client = boto3.client("s3", endpoint_url=settings.endpoint_url, aws_access_key_id=settings.access_key_id, aws_secret_access_key=settings.secret_access_key, region_name=settings.region)
+            # On AWS, sign for the bucket's regional host: a link to the global host is redirected (307) for a new bucket outside us-east-1.
+            config = None if settings.endpoint_url else Config(signature_version="s3v4", s3={"addressing_style": "virtual"})
+            self._client = boto3.client("s3", endpoint_url=settings.endpoint_url, aws_access_key_id=settings.access_key_id, aws_secret_access_key=settings.secret_access_key, region_name=settings.region, config=config)
         if not settings.sse_kms_key_id:
             log.warning("storage_sse_kms_unset", detail="falling back to SSE-S3; set a KMS key before handling real audio")
 
