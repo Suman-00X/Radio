@@ -2,22 +2,26 @@
 # Postgres is not defined here: the migrations create a BYPASSRLS role, which Render Postgres's
 # non-superuser owner cannot do. Use Neon (its owner role may), and paste the owner's connection
 # string into RADREPORT_OWNER_DATABASE_URL when Render prompts for it.
+#
+# Free tier: one web instance runs everything (`radreport-start all`: migrate, API, job worker, relay),
+# since Render's free plan has no background workers or pre-deploy step. It sleeps after 15 idle
+# minutes. To scale up, put web on a paid plan with `preDeployCommand: radreport-start migrate` and
+# `dockerCommand: radreport-start web`, and add a worker service running `radreport-start jobs`.
 
 envVarGroups:
   - name: radreport-config
     envVars:
       - key: RADREPORT_ENVIRONMENT
         value: production
-      # Two uvicorn workers + the job worker + the relay, each with a pool, must fit the database's
-      # max_connections (about 100 on Neon's smallest compute).
+      # One uvicorn worker + the job worker + the relay share a 512 MB free instance.
       - key: RADREPORT_DB__POOL_SIZE
-        value: "5"
+        value: "3"
       - key: RADREPORT_DB__MAX_OVERFLOW
-        value: "5"
+        value: "2"
       - key: WEB_CONCURRENCY
-        value: "2"
+        value: "1"
       - key: WORKER_CONCURRENCY
-        value: "2"
+        value: "1"
       # Speech recognition on Deepgram (Nova-3 Medical); the key is DEEPGRAM_API_KEY below.
       - key: RADREPORT_ASR__ENGINE
         value: deepgram
@@ -34,10 +38,9 @@ services:
     name: radreport-web
     runtime: docker
     region: singapore
-    plan: 0.5c-512mb
+    plan: free
     healthCheckPath: /ready
-    preDeployCommand: radreport-start migrate
-    dockerCommand: radreport-start web
+    dockerCommand: radreport-start all
     envVars:
       - fromGroup: radreport-config
       - key: RADREPORT_REDIS_URL
@@ -74,40 +77,6 @@ services:
       # .env.render (gitignored); never commit it here.
       - key: RADREPORT_DEMO_ACCOUNTS
         sync: false
-
-  # The job worker and the outbox relay in one container; split them into two workers
-  # (radreport-start worker / radreport-start relay) once one needs scaling on its own.
-  - type: worker
-    name: radreport-jobs
-    runtime: docker
-    region: singapore
-    plan: 0.5c-512mb
-    dockerCommand: radreport-start jobs
-    envVars:
-      - fromGroup: radreport-config
-      - key: RADREPORT_REDIS_URL
-        fromService:
-          type: keyvalue
-          name: radreport-cache
-          property: connectionString
-      - key: RADREPORT_OWNER_DATABASE_URL
-        fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_OWNER_DATABASE_URL}
-      - key: RADREPORT_REPLICA_HOST
-        fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_REPLICA_HOST}
-      - key: RADREPORT_STORAGE__BUCKET
-        fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_STORAGE__BUCKET}
-      - key: RADREPORT_STORAGE__REGION
-        fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_STORAGE__REGION}
-      - key: RADREPORT_STORAGE__ACCESS_KEY_ID
-        fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_STORAGE__ACCESS_KEY_ID}
-      - key: RADREPORT_STORAGE__SECRET_ACCESS_KEY
-        fromService: {type: web, name: radreport-web, envVarKey: RADREPORT_STORAGE__SECRET_ACCESS_KEY}
-      - key: ANTHROPIC_API_KEY
-        fromService: {type: web, name: radreport-web, envVarKey: ANTHROPIC_API_KEY}
-      - key: DEEPGRAM_API_KEY
-        fromService: {type: web, name: radreport-web, envVarKey: DEEPGRAM_API_KEY}
-      - key: GEMINI_API_KEY
-        fromService: {type: web, name: radreport-web, envVarKey: GEMINI_API_KEY}
 
   # Shared cache for lab config, roles, model assignments and admin sessions; reachable only from these services.
   - type: keyvalue

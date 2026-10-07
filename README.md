@@ -129,9 +129,9 @@ The production setup is **Render** (web service + background worker + Key Value,
 
 | Service | What to set up | Env var(s) it fills |
 |---|---|---|
-| **GitHub** | Push this repo to GitHub (it has no remote yet). Render deploys from it. | — |
+| **GitHub** | A public repo (`Suman-00X/Radio`). Render deploys from it. | — |
 | **Neon** (Postgres) | Create a project on **Postgres 16** in **AWS ap-southeast-1 (Singapore)**, the same region as the Render services. Copy the **direct** connection string of the owner role (turn *Connection pooling* **off** when copying it). The pooled URL rejects the startup options the migration step sets. `vector`, `pgcrypto` and `citext` are created by the first migration. | `RADREPORT_OWNER_DATABASE_URL` |
-| **Render** | An account with a payment method: the web service and worker use a paid instance (`0.5c-512mb`), and the pre-deploy migration step only runs on paid services. Key Value (Redis) is the free plan. | Render generates `RADREPORT_APP_DB_PASSWORD`, `RADREPORT_LAB_AUTH__TOKEN_SECRET`, `RADREPORT_OBSERVABILITY__METRICS_TOKEN` and `RADREPORT_REDIS_URL` for you. |
+| **Render** | A free account; no payment method. One free web instance runs everything (`radreport-start all`), and Key Value (Redis) is the free plan. | Render generates `RADREPORT_APP_DB_PASSWORD`, `RADREPORT_LAB_AUTH__TOKEN_SECRET`, `RADREPORT_OBSERVABILITY__METRICS_TOKEN` and `RADREPORT_REDIS_URL` for you. |
 | **You** | Choose the first product admin's password. | `RADREPORT_SEED_ADMIN_PASSWORD` |
 
 Why not Render Postgres? Migration 0002 creates a `BYPASSRLS` role, which Render's
@@ -171,9 +171,8 @@ storage under `fallbacks`.
    `start.sh` rewrites `postgresql://` to the psycopg driver itself.
 3. **Create the S3 bucket and IAM key** (see above).
 4. **Render dashboard → New → Blueprint →** connect the GitHub repo. Render reads `render.yaml`
-   and plans three resources: `radreport-web`, `radreport-jobs` and `radreport-cache`.
-5. **Fill in the prompted values** on `radreport-web`. The worker copies them from the web
-   service, so you enter each one once:
+   and plans two free resources: `radreport-web` and `radreport-cache`.
+5. **Fill in the prompted values** on `radreport-web`:
    - `RADREPORT_OWNER_DATABASE_URL`: Neon direct owner URL
    - `RADREPORT_STORAGE__BUCKET`, `__REGION` (`ap-southeast-1`), `__ACCESS_KEY_ID`, `__SECRET_ACCESS_KEY`
    - `RADREPORT_SEED_ADMIN_PASSWORD`: the first admin's password
@@ -181,12 +180,17 @@ storage under `fallbacks`.
    - `GEMINI_API_KEY` / `ANTHROPIC_API_KEY`: optional; `DEEPGRAM_API_KEY`: for speech recognition
 6. **Apply.** On each deploy Render:
    - builds the image from `Dockerfile`;
-   - runs the pre-deploy command `radreport-start migrate`, which applies every migration as
-     the Neon owner and then creates or updates the `radreport_app_login` role with the
-     generated `RADREPORT_APP_DB_PASSWORD`;
-   - starts the web service, which connects as `radreport_app_login` and, on an **empty**
-     database, seeds the model catalog, `admin@radreport.local`, the demo logins and a demo lab;
-   - starts `radreport-jobs` (job worker + outbox relay).
+   - starts `radreport-start all`, which first applies every migration as the Neon owner and
+     creates or updates the `radreport_app_login` role with the generated
+     `RADREPORT_APP_DB_PASSWORD` (the free plan has no pre-deploy step, so this runs on every
+     start and is a no-op at head);
+   - then runs the API, the job worker and the outbox relay in that one container. The API
+     connects as `radreport_app_login` and, on an **empty** database, seeds the model catalog,
+     `admin@radreport.local`, the demo logins and a demo lab.
+
+   A free instance sleeps after 15 idle minutes and takes about a minute to wake. The
+   synthetic-load workflow below keeps it awake. Free instances have no Render Shell, so run the
+   one-off commands below locally against Neon with `.env` loaded.
 7. **Check it's up:**
    ```bash
    curl -s https://<service>.onrender.com/ready  | jq   # {"status": "ready", ...}; this is Render's health check
@@ -212,11 +216,11 @@ storage under `fallbacks`.
 
 | Task | How |
 |---|---|
-| Re-sync demo logins after changing `RADREPORT_DEMO_ACCOUNTS` | Render Shell on `radreport-web`: `radreport-start seed` |
-| Reset an admin's password | Render Shell: `radreport-start python -m radreport.admin.cli set-password --email <email>` |
-| Run migrations by hand | Render Shell: `radreport-start migrate` |
+| Re-sync demo logins after changing `RADREPORT_DEMO_ACCOUNTS` | `python -m radreport.devtools.seed` (Render Shell on a paid plan: `radreport-start seed`) |
+| Reset an admin's password | `python -m radreport.admin.cli set-password --email <email>` |
+| Run migrations by hand | Redeploy (every start migrates), or `ops/docker/start.sh migrate` |
 | Scale | Raise `WEB_CONCURRENCY` / `WORKER_CONCURRENCY`, but keep processes × (`POOL_SIZE` + `MAX_OVERFLOW`) under Neon's `max_connections` (≈100 on the smallest compute), or add PgBouncer |
-| Split worker and relay | Replace `radreport-jobs` with two workers running `radreport-start worker` and `radreport-start relay` |
+| Move off the free plan | Put `radreport-web` on a paid plan with `preDeployCommand: radreport-start migrate` and `dockerCommand: radreport-start web`, and add a worker running `radreport-start jobs` (or `worker` and `relay` separately) |
 
 `RADREPORT_SEED_ADMIN_PASSWORD` is only read the first time the database is seeded. Changing it
 later does nothing; reset the password with the admin CLI instead.
