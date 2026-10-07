@@ -86,16 +86,19 @@ class EvalHarness:
         if not items:
             raise ValueError(f"eval_set {eval_set_id} yielded no items for device_class={device_class}")
 
-        run = EvalRun(tenant_id=eval_set.tenant_id, eval_set_id=eval_set_id, pipeline_version=pipeline_version, task_key=task_key, config_snapshot=config_snapshot or {}, is_smoke_subset=smoke, used_batch_api=used_batch_api, is_release_gate=is_release_gate, started_at=dt.datetime.now(dt.UTC))
-        self._session.add(run)
-        self._session.flush()
+        started_at = dt.datetime.now(dt.UTC)
+        # Stage runners call providers for minutes; a transaction held open across them is ended by the database's idle-in-transaction limit, so close it first (the lab scope is re-applied on the next).
+        self._session.commit()
 
         stage_outputs: dict[str, StageOutputs] = {}
         for stage_name, runner in stages:
             outputs = await runner(items)
             stage_outputs[stage_name] = outputs
-            log.info("eval_stage_complete", run_id=str(run.id), stage=stage_name, ok=len(outputs.outputs), failed=len(outputs.failures))
+            log.info("eval_stage_complete", eval_set_id=str(eval_set_id), stage=stage_name, ok=len(outputs.outputs), failed=len(outputs.failures))
 
+        run = EvalRun(tenant_id=eval_set.tenant_id, eval_set_id=eval_set_id, pipeline_version=pipeline_version, task_key=task_key, config_snapshot=config_snapshot or {}, is_smoke_subset=smoke, used_batch_api=used_batch_api, is_release_gate=is_release_gate, started_at=started_at)
+        self._session.add(run)
+        self._session.flush()
         metrics = self._score(run, items, stage_outputs)
         run.metrics = metrics
         run.completed_at = dt.datetime.now(dt.UTC)

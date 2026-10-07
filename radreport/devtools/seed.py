@@ -17,7 +17,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from radreport.adapters.llm.pricing import SEED_PRICES, derive_cache_prices
+from radreport.adapters.llm.pricing import GEMINI_KEY_ENV, GEMINI_SEED_PRICES, SEED_PRICES, derive_cache_prices
 from radreport.admin.auth import set_password
 from radreport.core.config import get_settings
 from radreport.core.logging import configure_logging, get_logger
@@ -77,8 +77,21 @@ def seed_model_catalog(session: Session) -> dict[str, ModelDefinition]:
         session.add(definition)
         definitions[identifier] = definition
 
+    # Gemini needs no endpoint: the provider name selects its built-in OpenAI-compatible base URL.
+    gemini = session.execute(select(ModelProvider).where(ModelProvider.name == "gemini", ModelProvider.tenant_id.is_(None))).scalar_one_or_none()
+    if gemini is None:
+        gemini = ModelProvider(tenant_id=None, name="gemini", kind=ProviderKind.CLOUD_API, default_endpoint=None, auth_method=AuthMethod.API_KEY, api_key_env_var=GEMINI_KEY_ENV)
+        session.add(gemini)
+        session.flush()
+    for identifier, price in GEMINI_SEED_PRICES.items():
+        existing = session.execute(select(ModelDefinition).where(ModelDefinition.provider_id == gemini.id, ModelDefinition.model_identifier == identifier)).scalar_one_or_none()
+        if existing is None:
+            existing = ModelDefinition(tenant_id=None, provider_id=gemini.id, model_identifier=identifier, display_name=identifier.replace("-", " ").title(), input_price_per_1k=price.input_per_1k, output_price_per_1k=price.output_per_1k, cache_read_price_per_1k=0.0, cache_write_price_per_1k=0.0, batch_discount_factor=1.0, context_window=price.context_window)
+            session.add(existing)
+        definitions[identifier] = existing
+
     session.flush()
-    log.info("model_catalog_seeded", providers=2, definitions=len(definitions))
+    log.info("model_catalog_seeded", providers=3, definitions=len(definitions))
     return definitions
 
 

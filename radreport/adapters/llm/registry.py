@@ -1,6 +1,7 @@
 """Decides which model serves a given pipeline step for a given lab, and refuses an ungated switch.
 
-Order: resolve the model for a step (TaskModelResolver) -> make a proposed change live, but only
+Order: resolve the model for a step (TaskModelResolver) -> record the release-gate run that measured a
+proposal (attach_eval_run) -> make a proposed change live, but only
 with a passing gold-set evaluation behind it (activate_assignment).
 """
 
@@ -122,6 +123,7 @@ def activate_assignment(session: Session, *, assignment_id: uuid.UUID, tenant_id
         raise UngatedActivation(f"task {assignment.task_key!r} is consequential; extraction, self-correction and verification stay on a frontier model regardless of local hardware capability")
 
     _assert_independence(session, assignment, tenant_id)
+    _assert_gate_passed(session, eval_run, assignment, tenant_id)
 
     incumbent = session.execute(select(TaskModelAssignment).where(TaskModelAssignment.tenant_id == tenant_id, TaskModelAssignment.task_key == assignment.task_key, TaskModelAssignment.status == AssignmentStatus.ACTIVE)).scalar_one_or_none()
 
@@ -141,6 +143,49 @@ def activate_assignment(session: Session, *, assignment_id: uuid.UUID, tenant_id
 
     log.info("model_assignment_activated", tenant_id=str(tenant_id), task_key=assignment.task_key, model_identifier=definition.model_identifier, eval_run_id=str(assignment.eval_run_id))
     return assignment
+
+
+def attach_eval_run(session: Session, *, assignment_id: uuid.UUID, tenant_id: uuid.UUID, eval_run_id: uuid.UUID, actor_id: uuid.UUID | None = None) -> TaskModelAssignment:
+    """Record the release-gate run that measured a proposed assignment; activation re-checks that run's verdict."""
+    assignment = session.get(TaskModelAssignment, assignment_id)
+    if assignment is None or assignment.tenant_id != tenant_id:
+        raise ModelResolutionError(f"no assignment {assignment_id} in tenant {tenant_id}")
+    if assignment.status != AssignmentStatus.PROPOSED:
+        raise UngatedActivation(f"assignment {assignment_id} is {assignment.status}; only a proposal takes an eval_run")
+    eval_run = session.get(EvalRun, eval_run_id)
+    if eval_run is None or not eval_run.is_release_gate:
+        raise UngatedActivation(f"eval_run {eval_run_id} is not a release gate")
+    if eval_run.task_key is not None and eval_run.task_key != assignment.task_key:
+        raise UngatedActivation(f"eval_run scoped to task {eval_run.task_key!r} cannot approve task {assignment.task_key!r}")
+    assignment.eval_run_id = eval_run.id
+    session.add(TaskModelAssignmentLog(tenant_id=tenant_id, task_key=assignment.task_key, model_definition_id=assignment.model_definition_id, event=AssignmentEvent.TESTED, eval_run_id=eval_run.id, actor_id=actor_id))
+    session.flush()
+    return assignment
+
+
+def _assert_gate_passed(session: Session, eval_run: EvalRun, assignment: TaskModelAssignment, tenant_id: uuid.UUID) -> None:
+    """The run finished, belongs here, measured this task, and clears the release gate against the incumbent's run on the same set."""
+    from radreport.eval.gates import evaluate_gate
+    from radreport.eval.metrics import default_registry
+
+    if eval_run.completed_at is None:
+        raise UngatedActivation(f"eval_run {eval_run.id} has not finished")
+    if eval_run.tenant_id not in (None, tenant_id):
+        raise UngatedActivation(f"eval_run {eval_run.id} belongs to another lab")
+    measured = dict(eval_run.metrics or {})
+    expected = [m.key for m in default_registry().metrics(task_key=assignment.task_key)]
+    unmeasured = [key for key in expected if measured.get(key) is None]
+    if not expected or unmeasured:
+        raise UngatedActivation(f"eval_run {eval_run.id} measured nothing that judges task {assignment.task_key!r}" + (f" (missing {', '.join(unmeasured)})" if unmeasured else ""))
+
+    incumbent = session.execute(select(TaskModelAssignment).where(TaskModelAssignment.tenant_id == tenant_id, TaskModelAssignment.task_key == assignment.task_key, TaskModelAssignment.status == AssignmentStatus.ACTIVE)).scalar_one_or_none()
+    baseline = session.get(EvalRun, incumbent.eval_run_id) if incumbent is not None and incumbent.eval_run_id else None
+    if baseline is not None and baseline.eval_set_id != eval_run.eval_set_id:
+        # Scores on different sets do not compare; the candidate is then held to the first-release limits.
+        baseline = None
+    verdict = evaluate_gate(eval_run, baseline)
+    if not verdict.passed:
+        raise UngatedActivation(f"eval_run {eval_run.id} fails the release gate: {'; '.join(verdict.regressions)}")
 
 
 def _definition_and_provider(session: Session, model_definition_id: uuid.UUID) -> tuple[ModelDefinition, ModelProvider]:

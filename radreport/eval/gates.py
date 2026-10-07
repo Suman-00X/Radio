@@ -28,9 +28,18 @@ class GateMetric:
     require_breakdowns: bool = False
     """Check per-group values, not just the headline."""
 
+    first_release_limit: float | None = None
+    """The bound a value must meet when there is no baseline to compare with, so a model's first release is held to an absolute bar rather than waved through."""
+
 
 #: the three named gate metrics, plus the ASR pair.
-RELEASE_GATE_METRICS: tuple[GateMetric, ...] = (GateMetric("CSE_DRAFT", Direction.LOWER_IS_BETTER, tolerance=0.0), GateMetric("HALLUC_RATE", Direction.LOWER_IS_BETTER, tolerance=0.0), GateMetric("ROUTE_TOP1", Direction.HIGHER_IS_BETTER, tolerance=0.01, require_breakdowns=True), GateMetric("WER", Direction.LOWER_IS_BETTER, tolerance=0.005), GateMetric("INS_RATE", Direction.LOWER_IS_BETTER, tolerance=0.005))
+RELEASE_GATE_METRICS: tuple[GateMetric, ...] = (
+    GateMetric("CSE_DRAFT", Direction.LOWER_IS_BETTER, tolerance=0.0, first_release_limit=1.0),
+    GateMetric("HALLUC_RATE", Direction.LOWER_IS_BETTER, tolerance=0.0, first_release_limit=0.05),
+    GateMetric("ROUTE_TOP1", Direction.HIGHER_IS_BETTER, tolerance=0.01, require_breakdowns=True, first_release_limit=0.9),
+    GateMetric("WER", Direction.LOWER_IS_BETTER, tolerance=0.005),
+    GateMetric("INS_RATE", Direction.LOWER_IS_BETTER, tolerance=0.005),
+)
 
 
 @dataclass(slots=True)
@@ -84,8 +93,10 @@ def evaluate_gate(candidate: EvalRun, baseline: EvalRun | None, *, metrics: tupl
 
         prior = baseline_metrics.get(metric.key)
         if prior is None:
-            # No baseline for this metric: record the value, do not block. A
-            # first run has nothing to regress against.
+            # No baseline: nothing to regress against, so only an absolute first-release bound can block.
+            if metric.first_release_limit is not None and _regressed(float(value), metric.first_release_limit, GateMetric(metric.key, metric.direction)):
+                verdict.passed = False
+                verdict.regressions.append(f"{metric.key}: {float(value):.4f} misses the first-release limit {metric.first_release_limit} ({metric.direction})")
             continue
 
         if _regressed(float(value), float(prior), metric):

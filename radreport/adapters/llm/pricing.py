@@ -30,6 +30,12 @@ class SeedPrice:
 #: Context windows: Opus 5 and Sonnet 5 are 1M; Haiku 4.5 is 200K.
 SEED_PRICES: dict[str, SeedPrice] = {"claude-opus-5": SeedPrice(0.005, 0.025, 1_000_000), "claude-sonnet-5": SeedPrice(0.002, 0.010, 1_000_000), "claude-haiku-4-5": SeedPrice(0.001, 0.005, 200_000)}
 
+#: Gemini through its OpenAI-compatible endpoint, priced at the free tier's zero; set the paid rates on the rows before relying on the cost figures.
+GEMINI_SEED_PRICES: dict[str, SeedPrice] = {"gemini-3.5-flash-lite": SeedPrice(0.0, 0.0, 1_000_000), "gemini-3.8-flash": SeedPrice(0.0, 0.0, 1_000_000)}
+
+#: The environment variable the seeded gemini provider reads its key from.
+GEMINI_KEY_ENV = "GEMINI_API_KEY"
+
 
 def cost_usd(usage: Usage, model: ResolvedModelRef, *, batched: bool = False) -> float:
     """Price one call."""

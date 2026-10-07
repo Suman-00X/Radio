@@ -59,10 +59,12 @@ def _assignment(*, task_key: str = TaskKey.EXTRACTION, bucket: str = TaskBucket.
     return SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_id, task_key=task_key, task_bucket=bucket, model_definition_id=model_definition_id or uuid.uuid4(), status=AssignmentStatus.PROPOSED, eval_run_id=eval_run_id, activated_at=None, activated_by=None, retired_at=None)
 
 
-def _eval_run(*, gate: bool = True, task_key: str | None = None) -> Any:
+def _eval_run(*, gate: bool = True, task_key: str | None = None, metrics: dict[str, float] | None = None, finished: bool = True) -> Any:
+    """A finished release-gate run whose extraction scores clear the first-release limits, unless told otherwise."""
+    import datetime as dt
     from types import SimpleNamespace
 
-    return SimpleNamespace(id=uuid.uuid4(), is_release_gate=gate, task_key=task_key)
+    return SimpleNamespace(id=uuid.uuid4(), is_release_gate=gate, is_smoke_subset=False, task_key=task_key, tenant_id=None, eval_set_id=uuid.uuid4(), completed_at=dt.datetime.now(dt.UTC) if finished else None, metrics={"CSE_DRAFT": 0.4, "HALLUC_RATE": 0.0} if metrics is None else metrics)
 
 
 def _definition(*, kind: str = ProviderKind.CLOUD_API, identifier: str = "claude-sonnet-5") -> Any:
@@ -172,3 +174,29 @@ def test_activating_another_tenants_assignment_is_refused() -> None:
             tenant_id=uuid.uuid4(),  # a different tenant
             actor_id=uuid.uuid4(),
         )
+
+
+def test_an_unfinished_eval_run_cannot_approve_an_activation() -> None:
+    tenant = uuid.uuid4()
+    run = _eval_run(task_key=TaskKey.EXTRACTION, finished=False)
+    assignment = _assignment(tenant_id=tenant, eval_run_id=run.id)
+    with pytest.raises(UngatedActivation, match="not finished"):
+        activate_assignment(_session_for(assignment, eval_run=run), assignment_id=assignment.id, tenant_id=tenant, actor_id=uuid.uuid4())
+
+
+def test_a_run_that_measured_nothing_for_the_task_cannot_approve_it() -> None:
+    """A release-gate run scored only on ASR metrics says nothing about extraction."""
+    tenant = uuid.uuid4()
+    run = _eval_run(task_key=TaskKey.EXTRACTION, metrics={"WER": 0.1})
+    assignment = _assignment(tenant_id=tenant, eval_run_id=run.id)
+    with pytest.raises(UngatedActivation, match="measured nothing"):
+        activate_assignment(_session_for(assignment, eval_run=run), assignment_id=assignment.id, tenant_id=tenant, actor_id=uuid.uuid4())
+
+
+def test_a_run_that_fails_the_gate_cannot_approve_it() -> None:
+    """With no incumbent to compare against, the first-release limits apply."""
+    tenant = uuid.uuid4()
+    run = _eval_run(task_key=TaskKey.EXTRACTION, metrics={"CSE_DRAFT": 0.4, "HALLUC_RATE": 0.3})
+    assignment = _assignment(tenant_id=tenant, eval_run_id=run.id)
+    with pytest.raises(UngatedActivation, match="HALLUC_RATE"):
+        activate_assignment(_session_for(assignment, eval_run=run), assignment_id=assignment.id, tenant_id=tenant, actor_id=uuid.uuid4())

@@ -109,3 +109,11 @@ def test_alignment_is_deterministic() -> None:
     a = align(tokenize("the left kidney measures four centimetres"), tokenize("the right kidney measures four cm"))
     b = align(tokenize("the left kidney measures four centimetres"), tokenize("the right kidney measures four cm"))
     assert a == b
+
+
+def test_a_first_release_is_held_to_the_absolute_limit() -> None:
+    """With no baseline, a metric that carries a first-release limit must meet it."""
+    assert evaluate_gate(_run({"HALLUC_RATE": 0.02, "ROUTE_TOP1": 0.95}), None).passed
+    verdict = evaluate_gate(_run({"HALLUC_RATE": 0.2}), None)
+    assert not verdict.passed
+    assert "HALLUC_RATE" in verdict.regressions[0]

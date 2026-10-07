@@ -151,8 +151,9 @@ storage under `fallbacks`.
 
 | Service | Unlocks | Env var(s) |
 |---|---|---|
-| **Anthropic** (console.anthropic.com) | Claude models for the pipeline's model steps and template parsing. No model assignment is seeded, so nothing calls Claude until you register a provider and assign models in the admin panel. | `ANTHROPIC_API_KEY` |
-| **Deepgram** | Reserved: `render.yaml` prompts for it, but no Deepgram adapter exists yet. Leave it blank. | `DEEPGRAM_API_KEY` |
+| **Anthropic** (console.anthropic.com) | Claude models for the pipeline's model steps and template parsing. No model assignment is seeded, so nothing calls Claude until a model passes a release gate for a step (below). | `ANTHROPIC_API_KEY` |
+| **Gemini** (aistudio.google.com) | Gemini models (seeded as the `gemini` provider, priced at the free tier's zero) for routing and extraction, through Google's OpenAI-compatible endpoint. Same release gate as Claude. | `GEMINI_API_KEY` |
+| **Deepgram** (console.deepgram.com) | Hosted speech recognition (Nova-3 Medical) with the lab's keyterms. Set `RADREPORT_ASR__ENGINE=deepgram`; without it the stub engine runs. | `DEEPGRAM_API_KEY` |
 | **Sentry** (free tier) | Error reports, scrubbed of bodies, cookies, messages and locals. | `RADREPORT_OBSERVABILITY__SENTRY_DSN` |
 | **Grafana Cloud** (free tier) | Traces via OTLP; scrape `/metrics` with the generated metrics token; import `ops/observability/grafana/dashboards/radreport.json`. | `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` |
 | **BioPortal** | RadLex lookups during onboarding. | `BIOPORTAL_API_KEY` |
@@ -177,7 +178,7 @@ storage under `fallbacks`.
    - `RADREPORT_STORAGE__BUCKET`, `__REGION` (`ap-southeast-1`), `__ACCESS_KEY_ID`, `__SECRET_ACCESS_KEY`
    - `RADREPORT_SEED_ADMIN_PASSWORD`: the first admin's password
    - `RADREPORT_DEMO_ACCOUNTS`: from `.env.render`
-   - `ANTHROPIC_API_KEY`: optional; `DEEPGRAM_API_KEY`: leave blank
+   - `GEMINI_API_KEY` / `ANTHROPIC_API_KEY`: optional; `DEEPGRAM_API_KEY`: for speech recognition
 6. **Apply.** On each deploy Render:
    - builds the image from `Dockerfile`;
    - runs the pre-deploy command `radreport-start migrate`, which applies every migration as
@@ -195,8 +196,15 @@ storage under `fallbacks`.
    then open `/recruiter` and `/features` to check the public pages.
 9. **Optional follow-ups:**
    - Add the GitHub Actions secrets for synthetic load.
-   - Assign Claude models to pipeline steps per lab in the admin panel. An assignment stays
-     *proposed* until it has a gold-set evaluation run.
+   - Put a model on a pipeline step. An assignment stays *proposed* until a release-gate run on
+     the lab's frozen gold set passes; activation re-checks that run's verdict:
+     ```bash
+     python -m radreport.eval.gate_run --lab sunrise --task routing_pick --model gemini-3.5-flash-lite --eval-set sunrise-synthetic-gold-v1 --activate
+     python -m radreport.eval.gate_run --lab sunrise --task extraction   --model gemini-3.5-flash-lite --eval-set sunrise-synthetic-gold-v1 --activate
+     ```
+     For a demo lab, `python -m radreport.devtools.synthetic_goldset --lab sunrise` builds a
+     **synthetic** gold set (dictations composed from known findings, read by the system voice,
+     marked synthetic throughout). Replace it with radiologist-annotated gold before real patients.
    - Point Grafana Cloud / Sentry at the service (see the optional table).
    - Add a custom domain in Render (and Cloudflare, if you use it).
 
@@ -258,6 +266,7 @@ will actually touch.
 |---|---|
 | `RADREPORT_DATABASE_URL` | The app's connection. **Must be the non-owner role.** On Render it is derived from the owner URL + `RADREPORT_APP_DB_PASSWORD`. |
 | `RADREPORT_OWNER_DATABASE_URL` | Container only: used by `migrate` and to derive the app URL. |
+| `RADREPORT_REPLICA_HOST` | Container only: a Neon read replica's host; the replica URL is the app URL on this host. `RADREPORT_DB__REPLICA_URL` takes precedence. |
 | `RADREPORT_ENVIRONMENT` | `local`/`test`/`development` serve `/docs` and send the admin cookie without `Secure`; anything else hides docs and requires HTTPS. |
 | `RADREPORT_LAB_AUTH__TOKEN_SECRET` | Signs lab access tokens. Required outside local/test/development (32+ chars). |
 | `RADREPORT_STORAGE__*` | S3-compatible audio store. `BACKEND=local` writes to `.storage/` (dev only). |

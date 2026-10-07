@@ -46,6 +46,7 @@ class MetricRegistry:
 
 def default_registry() -> MetricRegistry:
     from radreport.eval.metrics.asr_metrics import ClinicalTermErrorRate, InsertionRate, WordErrorRate
+    from radreport.eval.metrics.extraction_metrics import CseDraft, HallucinationRate
     from radreport.eval.metrics.routing_metrics import CodewordCompliance, RouteTop1, StudyCodeRecall
 
-    return MetricRegistry([WordErrorRate(), InsertionRate(), ClinicalTermErrorRate(), CodewordCompliance(), StudyCodeRecall(), RouteTop1()])
+    return MetricRegistry([WordErrorRate(), InsertionRate(), ClinicalTermErrorRate(), CodewordCompliance(), StudyCodeRecall(), RouteTop1(), CseDraft(), HallucinationRate()])
