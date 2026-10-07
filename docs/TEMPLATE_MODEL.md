@@ -27,8 +27,8 @@ every field before a template goes live.
 
 1. Run the model on an OpenAI-compatible server. The recommended starting point is Qwen 2.5 7B
    Instruct:
-   - Ollama: `ollama pull qwen2.5:7b-instruct && ollama serve` (endpoint `http://host:11434`)
-   - vLLM: `vllm serve Qwen/Qwen2.5-7B-Instruct --max-model-len 16384` (endpoint `http://host:8000`)
+   - Ollama: `ollama pull qwen2.5:7b-instruct && ollama serve` (endpoint `http://host:11434/v1`)
+   - vLLM: `vllm serve Qwen/Qwen2.5-7B-Instruct --max-model-len 16384` (endpoint `http://host:8000/v1`)
    A 7B model at 4-bit fits in about 6 GB of memory; on a single consumer GPU a template-sized
    request takes well under a second, on CPU a few seconds.
 2. In the admin panel, add a `local_openai_compatible` provider and a model definition with that
@@ -38,14 +38,14 @@ every field before a template goes live.
 
 Gemini Nano is not an option for this: it runs on-device inside Chrome and Android and has no
 server API. A hosted small model (for example Gemini Flash-Lite or a hosted Qwen) can be used
-through any OpenAI-compatible endpoint, but the client calls `{endpoint}/v1/chat/completions`, so a
-provider whose compatible path differs needs a small proxy or a client change.
+through its OpenAI-compatible endpoint: the client calls `{endpoint}/chat/completions`, and a provider
+named `gemini` or `openai` needs no endpoint at all.
 
 ## Measuring
 
 ```
 python -m radreport.devtools.template_eval                      # parser only
-python -m radreport.devtools.template_eval --endpoint http://127.0.0.1:11434 --model qwen2.5:7b-instruct
+python -m radreport.devtools.template_eval --endpoint http://127.0.0.1:11434/v1 --model qwen2.5:7b-instruct
 ```
 
 The harness runs eight fixture templates (`devtools/data/template_eval/`): two structured, one

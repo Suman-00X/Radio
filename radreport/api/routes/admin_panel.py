@@ -414,7 +414,7 @@ def providers_page(admin: CurrentAdmin, error: str | None = None, notice: str | 
  <option value="local_openai_compatible">Locally hosted (OpenAI-compatible)</option>
  </select></div>
  <div><label for="env">API key environment variable</label><input id="env" name="api_key_env_var" placeholder="ANTHROPIC_API_KEY"><div class="hint">Cloud only. The name is stored; the key never reaches the database.</div></div>
- <div><label for="endpoint">Endpoint</label><input id="endpoint" name="default_endpoint" placeholder="http://10.0.0.5:8000/v1"><div class="hint">Locally hosted only.</div></div>
+ <div><label for="endpoint">Endpoint</label><input id="endpoint" name="default_endpoint" placeholder="http://10.0.0.5:8000/v1"><div class="hint">OpenAI-compatible base URL with its version. Blank for anthropic, openai and gemini.</div></div>
  </div>
  <div class="actions"><button class="primary" type="submit">{icon("plus")}Add provider</button></div>
  </form>""",

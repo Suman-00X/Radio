@@ -30,7 +30,8 @@ class AnthropicClient:
         else:
             from anthropic import AsyncAnthropic
 
-            self._client = AsyncAnthropic(api_key=api_key)
+            # The provider's endpoint, when set, is the SDK's base URL (an Anthropic-compatible gateway); unset, the SDK's own.
+            self._client = AsyncAnthropic(api_key=api_key, base_url=model_ref.endpoint)
 
     # ------------------------------------------------------------- single ---
     async def complete(self, request: LLMRequest, *, model_id: str) -> LLMResponse:

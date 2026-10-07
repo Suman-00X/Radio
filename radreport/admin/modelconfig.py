@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from radreport.adapters.llm.factory import KNOWN_BASE_URLS, base_url_for, uses_anthropic_api
 from radreport.core.logging import get_logger
 from radreport.core.types import ASR_TASKS, CONSEQUENTIAL_TASKS, ActorType, AssignmentEvent, AssignmentStatus, AuthMethod, ProviderKind, TaskBucket, TaskKey
 from radreport.db.models.modelconfig import ModelDefinition, ModelProvider, TaskModelAssignment, TaskModelAssignmentLog
@@ -53,6 +54,8 @@ def create_provider(session: Session, *, name: str, kind: str, actor_id: uuid.UU
 
     if kind == ProviderKind.LOCAL_OPENAI_COMPATIBLE and not default_endpoint:
         raise ConfigRefused("a locally hosted provider needs an endpoint; there is no default address for a box only this lab can reach", code="no_endpoint")
+    if kind == ProviderKind.CLOUD_API and not uses_anthropic_api(name, kind) and not base_url_for(name, default_endpoint):
+        raise ConfigRefused(f"{name!r} has no built-in endpoint ({', '.join(sorted(KNOWN_BASE_URLS))} do); give its OpenAI-compatible base URL, version included", code="no_endpoint")
 
     existing = session.execute(select(ModelProvider).where(ModelProvider.tenant_id == tenant_id, ModelProvider.name == name)).scalar_one_or_none()
     if existing is not None:

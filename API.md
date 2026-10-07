@@ -865,7 +865,10 @@ model serves each pipeline step while the lab is still onboarding.
 Form fields: providers take `name`, `kind` (`cloud_api` \|
 `local_openai_compatible`), `api_key_env_var`, `default_endpoint`; models take
 `provider_id`, `model_identifier`, `display_name`, `endpoint_override`;
-`assign` takes `task_key` and `model_definition_id`. The API's propose body is
+`assign` takes `task_key` and `model_definition_id`. An endpoint is an
+OpenAI-compatible base URL with its version (`http://10.0.0.5:8000/v1`); a
+provider named `anthropic` uses the Anthropic SDK instead, and `openai` and
+`gemini` have built-in base URLs, so they need none. The API's propose body is
 the same pair as JSON, and returns `201` with `assignment_id` and `status`.
 
 **Cloud API keys are never entered or stored here.** A provider names an

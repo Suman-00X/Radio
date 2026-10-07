@@ -45,7 +45,7 @@ fine-tune mostly memorises the labs it saw.
 1. Serve the base model and the tuned adapter side by side (vLLM:
    `vllm serve Qwen/Qwen2.5-7B-Instruct --enable-lora --lora-modules radreport-templates=./adapter`).
 2. Run the fixture harness against each:
-   `python -m radreport.devtools.template_eval --endpoint http://127.0.0.1:8000 --model radreport-templates`.
+   `python -m radreport.devtools.template_eval --endpoint http://127.0.0.1:8000/v1 --model radreport-templates`.
 3. Score the `template_parse.eval.jsonl` items the same way (recall and precision of field
    labels against the radiologist's answer).
 4. Deploy only if the tuned model beats the base model on both, with precision no lower.

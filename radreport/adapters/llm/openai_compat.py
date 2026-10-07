@@ -19,17 +19,22 @@ from radreport.core.logging import get_logger
 
 log = get_logger(__name__)
 
+#: Request fields a hosted provider's compatible endpoint refuses (400), by provider name; the seed still keys the response cache.
+UNSUPPORTED_FIELDS: dict[str, frozenset[str]] = {"gemini": frozenset({"seed"})}
+
 
 class OpenAICompatibleClient:
-    """`/v1/chat/completions` against vLLM, Ollama, llama.cpp, LM Studio, …"""
+    """`{base_url}/chat/completions` against vLLM, Ollama, llama.cpp, LM Studio, … and hosted OpenAI-compatible APIs (OpenAI, Gemini)."""
 
     provider_name = "local_openai_compatible"
 
     def __init__(self, *, model_ref: ResolvedModelRef, api_key: str | None = None, limiter: ProviderLimiter | None = None, timeout_seconds: float = 120.0, client: httpx.AsyncClient | None = None) -> None:
         if not model_ref.endpoint:
-            raise ValueError("a local model needs an endpoint: set `model_definition.endpoint_override` (per-tenant — each lab's box has its own address)")
+            raise ValueError("an OpenAI-compatible model needs a base URL, version included (http://host:8000/v1): set `model_definition.endpoint_override` (per-tenant — each lab's box has its own address)")
         self._model_ref = model_ref
         self._base_url = model_ref.endpoint.rstrip("/")
+        # The base URL carries the API version, as with the OpenAI SDK: `http://host:8000/v1`, Gemini's `.../v1beta/openai`.
+        self._completions_url = f"{self._base_url}/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._limiter = limiter or ProviderLimiter(name="local_openai_compatible")
         self._client = client or httpx.AsyncClient(timeout=timeout_seconds)
@@ -43,7 +48,7 @@ class OpenAICompatibleClient:
         payload: dict[str, Any] = {"model": model_id, "messages": [{"role": "user", "content": content}], "max_tokens": request.max_tokens}
         if request.temperature is not None:
             payload["temperature"] = request.temperature
-        if request.seed is not None:
+        if request.seed is not None and "seed" not in UNSUPPORTED_FIELDS.get(self._model_ref.provider_name, frozenset()):
             payload["seed"] = request.seed
         if request.json_schema is not None:
             payload["response_format"] = {"type": "json_schema", "json_schema": {"name": "structured_output", "schema": request.json_schema, "strict": True}}
@@ -51,7 +56,7 @@ class OpenAICompatibleClient:
             payload["stop"] = list(request.stop_sequences)
 
         async def _call() -> httpx.Response:
-            response = await self._client.post(f"{self._base_url}/v1/chat/completions", json=payload, headers=self._headers)
+            response = await self._client.post(self._completions_url, json=payload, headers=self._headers)
             response.raise_for_status()
             return response
 

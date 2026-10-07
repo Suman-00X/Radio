@@ -142,12 +142,22 @@ def test_a_cloud_provider_must_name_an_env_var_that_exists(admin_fixture) -> Non
         assert exc.value.code == "env_var_unset"
 
 
+def test_a_cloud_provider_without_a_built_in_endpoint_must_give_one(admin_fixture, monkeypatch) -> None:
+    """Only anthropic, openai and gemini know their own address; any other hosted provider names its OpenAI-compatible base URL."""
+    f = admin_fixture
+    monkeypatch.setenv("TEST_PROVIDER_KEY", "k")
+    with system_session(f["db"]) as session:
+        with pytest.raises(ConfigRefused) as exc:
+            create_provider(session, name=f"mistral-{uuid.uuid4().hex[:6]}", kind=ProviderKind.CLOUD_API, api_key_env_var="TEST_PROVIDER_KEY", actor_id=f["admin_id"])
+        assert exc.value.code == "no_endpoint"
+
+
 def test_the_api_key_never_reaches_the_database(admin_fixture, monkeypatch) -> None:
     """The env var's *name* is stored; the secret stays in the environment."""
     f = admin_fixture
     monkeypatch.setenv("TEST_PROVIDER_KEY", "sk-super-secret-value")
     with system_session(f["db"]) as session:
-        provider = create_provider(session, name=f"cloud-{uuid.uuid4().hex[:6]}", kind=ProviderKind.CLOUD_API, api_key_env_var="TEST_PROVIDER_KEY", actor_id=f["admin_id"])
+        provider = create_provider(session, name=f"cloud-{uuid.uuid4().hex[:6]}", kind=ProviderKind.CLOUD_API, api_key_env_var="TEST_PROVIDER_KEY", default_endpoint="https://llm.example/v1", actor_id=f["admin_id"])
         assert provider.api_key_env_var == "TEST_PROVIDER_KEY"
 
         # Nothing on the row holds the secret.

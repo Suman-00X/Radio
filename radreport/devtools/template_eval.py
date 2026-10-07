@@ -5,7 +5,7 @@ unsure and a model is given, run the fallback (run_case) -> score found against 
 (score: a field matches when one label's words contain the other's) -> print a table and totals (main).
 
     python -m radreport.devtools.template_eval
-    python -m radreport.devtools.template_eval --endpoint http://127.0.0.1:11434 --model qwen2.5:7b-instruct
+    python -m radreport.devtools.template_eval --endpoint http://127.0.0.1:11434/v1 --model qwen2.5:7b-instruct
 """
 
 from __future__ import annotations
@@ -107,7 +107,7 @@ def _model(endpoint: str, model: str, api_key: str | None) -> template_llm.Fallb
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--endpoint", help="an OpenAI-compatible server (vLLM, Ollama, llama.cpp) serving the template model")
+    parser.add_argument("--endpoint", help="the OpenAI-compatible base URL, version included (Ollama http://127.0.0.1:11434/v1), serving the template model")
     parser.add_argument("--model", default="qwen2.5:7b-instruct")
     parser.add_argument("--api-key")
     parser.add_argument("--below", type=float, default=0.8, help="parser confidence under which the model is asked")
