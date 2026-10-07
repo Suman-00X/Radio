@@ -89,6 +89,7 @@ class PersistDraftStage:
         # Keyed off each row's own `seq`, not by zipping two lists.
         utterance_ids = {row.seq: row.id for row in transcript_rows if isinstance(row, TranscriptUtterance)}
 
+        row_ids: dict[str, uuid.UUID] = {}
         for field_key, value in state.field_values.items():
             template_field_id = field_ids.get(field_key)
             if template_field_id is None:
@@ -114,6 +115,7 @@ class PersistDraftStage:
                 flag_reasons=list(value.flag_reasons) or None,
             )
             pending.append(row)
+            row_ids[field_key] = row.id
             result.field_values += 1
 
             for ref in value.provenance:
@@ -121,7 +123,9 @@ class PersistDraftStage:
                 result.provenance_spans += 1
 
         for finding in state.verification:
-            pending.append(VerificationFinding(tenant_id=state.tenant_id, report_draft_id=draft.id, check_id=finding.check_id, check_type=finding.check_type, severity=finding.severity, message=finding.message, field_key=finding.field_key, evidence=finding.evidence))
+            # The table links a finding to the field's row; the key also stays in the evidence, for a field that was never written.
+            evidence = {**(finding.evidence or {}), "field_key": finding.field_key} if finding.field_key else finding.evidence
+            pending.append(VerificationFinding(tenant_id=state.tenant_id, report_draft_id=draft.id, report_field_value_id=row_ids.get(finding.field_key) if finding.field_key else None, check_id=finding.check_id, check_type=finding.check_type, severity=finding.severity, message=finding.message, evidence=evidence))
 
         warnings: list[str] = []
         if result.skipped_fields:

@@ -355,3 +355,23 @@ def test_coverage_of_nothing_is_zero_not_a_division_error() -> None:
 
 def test_the_target_is_the_one_4_3_states() -> None:
     assert REVIEW_REDUCTION_TARGET == 0.40
+
+
+@pytest.mark.asyncio
+async def test_a_finding_about_a_field_is_linked_to_that_fields_row() -> None:
+    """The finding table keys on the field's row, not its name; the name stays in the evidence."""
+    from radreport.db.models.reporting import ReportFieldValue, VerificationFinding
+
+    state = _persistable(_unsampled_state(confidence=0.97))
+    version, field_id = uuid.uuid4(), uuid.uuid4()
+    state.routing = RoutingState(chosen_template_version_id=version)
+    state.human_routing = decide(state, weeks_since_go_live=STEADY_STATE)
+    state.field_values = {"liver": FieldValue(field_key="liver", value_enum="normal", fill_source="dictated")}
+    state.verification = [VerificationFindingState(check_id="grounding_failed", check_type="roundtrip", severity="error", message="quote not verbatim", field_key="liver", evidence={"quote": "liver"})]
+    provider = StaticKnowledgeProvider(TenantKnowledge(tenant_id=state.tenant_id, template_fields={version: {"liver": field_id}}))
+
+    result = await PersistDraftStage(provider).run(state, ctx=object())
+    row = next(w for w in result.pending_writes if isinstance(w, ReportFieldValue))
+    finding = next(w for w in result.pending_writes if isinstance(w, VerificationFinding))
+    assert finding.report_field_value_id == row.id
+    assert finding.evidence == {"quote": "liver", "field_key": "liver"}
