@@ -28,7 +28,7 @@ from typing import Any
 
 import httpx
 
-from radreport.devtools.synthetic import synth_audio, synth_template_docx, with_spoken_text
+from radreport.devtools.synthetic import spoken_audio, synth_audio, synth_template_docx, with_spoken_text
 
 CREDENTIALS = Path("local-credentials.md")
 
@@ -234,7 +234,8 @@ def capture(s: Session, lab: str, *, count: int, run_worker: bool) -> dict[str, 
         study = s.call(who, "POST", "/ingest/studies", json={"mrn": f"SYNTH-SUN-{1000 + i // 2}", "accession_number": f"SUN-ACC-{20261000 + i}", "modality": modality, "body_part_examined": part, "study_description": description, "priority": "urgent" if "urgent" in words else "routine", "sex": "MF"[i % 2], "age_years": 30 + i % 50}, ok=(200, 201))
         if not study:
             continue
-        audio = with_spoken_text(synth_audio(seconds=12.0 + i % 5, seed=1000 + i, audio_format="wav", snr_db=24.0, silence_ratio=0.15), words)
+        # Real speech where the machine has a voice, so a hosted speech engine has something to hear; the comment still feeds the stub.
+        audio = with_spoken_text(spoken_audio(words) or synth_audio(seconds=12.0 + i % 5, seed=1000 + i, audio_format="wav", snr_db=24.0, silence_ratio=0.15), words)
         recording = s.call(who, "POST", "/ingest/recordings", data={"study_id": study["study_id"], "radiologist_id": radiologist["radiologist_profile_id"], "capture_device_class": "dictation_mic_ptt", "is_push_to_talk": "true"}, files={"file": (f"dictation-{i}.wav", audio, "audio/wav")}, ok=(201, 409))
         if recording:
             uploaded.append(recording.get("recording_id"))

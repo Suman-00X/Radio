@@ -148,8 +148,11 @@ class LLMSettings(BaseModel):
 
 
 class ASRSettings(BaseModel):
-    engine: str = "whisper_local"
+    engine: str = Field(default="whisper_local", pattern="^(whisper_local|deepgram)$")
+    """`deepgram` sends audio to Deepgram (key in DEEPGRAM_API_KEY); `whisper_local` runs on this machine, or the stub while engine_version ends in `stub`."""
+
     engine_version: str = "v0-stub"
+    deepgram_model: str = "nova-3-medical"
     max_concurrency: int = 4
 
 

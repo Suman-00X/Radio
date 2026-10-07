@@ -1,6 +1,6 @@
 """Generates fake audio, dictations and templates for local development, so no real patient data is needed.
 
-Order: make audio (synth_audio, synth_lossy_audio) -> make a spoken report to go with it
+Order: make audio (synth_audio, synth_lossy_audio, or real speech with spoken_audio) -> make a spoken report to go with it
 (synth_dictation, synth_patient_fields) -> make a template document (synth_template_docx).
 """
 
@@ -144,6 +144,29 @@ def synth_template_docx(paragraphs: Sequence[tuple[str, bool]] = SYNTH_CHEST_CT)
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("word/document.xml", document)
     return buffer.getvalue()
+
+
+def spoken_audio(text: str, *, sample_rate: int = 16_000, min_seconds: float = 6.0) -> bytes | None:
+    """`text` read aloud by the system voice (macOS `say`) as a mono WAV, padded to `min_seconds`; None where there is no voice."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    if shutil.which("say") is None:
+        return None
+    import numpy as np
+    import soundfile as sf
+
+    with tempfile.TemporaryDirectory() as folder:
+        path = f"{folder}/speech.wav"
+        subprocess.run(["say", "-o", path, f"--data-format=LEI16@{sample_rate}", text], check=True, timeout=120)
+        samples, rate = sf.read(path, dtype="int16")
+    # Half a second of quiet either side, as a dictation has, and enough length to pass the duration gate.
+    pad = int(rate * 0.5)
+    samples = np.concatenate([np.zeros(pad, dtype=np.int16), samples, np.zeros(max(pad, int(rate * min_seconds) - len(samples) - pad), dtype=np.int16)])
+    out = io.BytesIO()
+    sf.write(out, samples, rate, format="WAV", subtype="PCM_16")
+    return out.getvalue()
 
 
 def with_spoken_text(wav: bytes, text: str) -> bytes:
