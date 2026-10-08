@@ -11,7 +11,7 @@ WORKDIR /src
 COPY pyproject.toml ./
 COPY radreport ./radreport
 # Install the dependencies, then drop the package itself: the code runs from /app.
-RUN pip install ".[redis,observability]" && pip uninstall -y radreport
+RUN pip install ".[redis,observability,test]" && pip uninstall -y radreport
 
 FROM python:3.12-slim
 ENV PATH=/opt/venv/bin:$PATH \

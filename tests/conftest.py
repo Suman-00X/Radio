@@ -116,3 +116,13 @@ def _fresh_shared_rate_limits(request: pytest.FixtureRequest) -> Iterator[None]:
         with system_session(request.getfixturevalue("migrated_db")) as session:
             session.execute(text("DELETE FROM rate_limit_counter"))
     yield
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip every @pytest.mark.db test without a test database, so none falls back to the app's own database."""
+    if _test_db_url() is not None:
+        return
+    skip = pytest.mark.skip(reason="set RADREPORT_TEST_DATABASE_URL to run DB-backed tests")
+    for item in items:
+        if "db" in item.keywords:
+            item.add_marker(skip)

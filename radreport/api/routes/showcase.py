@@ -41,8 +41,6 @@ def _doc(name: str) -> str | None:
 #: The FEATURES.md tabs shown on the recruiter tour, in order; the rest is the features page.
 _TOUR_TABS = ("for-recruiters", "hld", "crash-test")
 _SPARKLE_TAB = "crash-test"
-#: Where the test suite may be run from the recruiter tour; the access policy refuses the stream everywhere else.
-_LIVE_ENVIRONMENTS = ("local", "test", "development")
 
 
 def _site_link(href: str) -> str | None:
@@ -312,13 +310,13 @@ def recruiter() -> HTMLResponse:
 
 def _test_runner() -> str:
     """The button that runs every test live, or why this deployment does not offer it."""
-    from radreport.core.config import get_settings
+    import importlib.util
 
     total = project_numbers()["tests"]
-    if get_settings().environment not in _LIVE_ENVIRONMENTS or not (_ROOT / "tests").is_dir():
-        return f"""<div class="banner info doc-banner">{icon("info")}<div>The live test run is available on local and development deployments. Run the app locally (<code>make run</code>) and open this tab to watch all {total:,} test functions run.</div></div>"""
+    if not (_ROOT / "tests").is_dir() or importlib.util.find_spec("pytest") is None:
+        return f"""<div class="banner info doc-banner">{icon("info")}<div>This deployment ships without the test suite. Run the app locally (<code>make run</code>) and open this tab to watch all {total:,} test functions run.</div></div>"""
     return """<section class="run-card" data-test-run="/recruiter/tests/stream">
-      <div><div class="run-eyebrow">Live</div><h3>Run the whole test suite, now</h3><p>Every unit, integration and database test runs on this server while you watch. Database tests skip when no test database is configured.</p></div>
+      <div><div class="run-eyebrow">Live</div><h3>Run the whole test suite, now</h3><p>Every unit and integration test runs on this server while you watch. Database tests skip unless a test database is configured: the suite never touches this deployment's own data.</p></div>
       <button type="button" class="btn primary run-go" data-test-run-go><span class="run-go-dot" aria-hidden="true"></span>Run all tests</button>
     </section>"""
 

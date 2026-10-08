@@ -64,7 +64,7 @@
     <route id="public.media" method="GET" path="/media/{name}" rate-limit="public" description="Screen recordings shown on the recruiter tour.">
       <param name="name" in="path" type="string" required="true" pattern="[a-z0-9-]+\.(gif|mp4)" max-length="80"/>
     </route>
-    <route id="public.test-run" method="GET" path="/recruiter/tests/stream" rate-limit="test-run" environments="local test development" description="Runs the whole test suite and streams each result as a server-sent event."/>
+    <route id="public.test-run" method="GET" path="/recruiter/tests/stream" rate-limit="test-run" description="Runs the whole test suite and streams each result as a server-sent event."/>
     <route id="ui.static" method="GET" path="/ui/static/{name}" rate-limit="public" description="Stylesheets and scripts.">
       <param name="name" in="path" type="string" required="true" pattern="(review|app|showtime)\.(js|css)" max-length="200"/>
       <param name="v" in="query" type="string" pattern="[0-9a-f]{12}"/>

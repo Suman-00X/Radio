@@ -119,11 +119,30 @@ def test_a_second_live_run_is_told_the_first_is_still_going(monkeypatch) -> None
     assert '"type": "busy"' in _fresh_client().get("/recruiter/tests/stream").text
 
 
-def test_the_live_run_is_refused_outside_development(monkeypatch) -> None:
+def test_production_offers_the_live_run(monkeypatch) -> None:
     from radreport.core.config import get_settings
 
-    client = _fresh_client()
     monkeypatch.setattr(get_settings(), "environment", "production")
-    assert client.get("/recruiter/tests/stream").status_code == 404
-    page = client.get("/recruiter").text
-    assert "data-test-run=" not in page and "available on local and development deployments" in page
+    from radreport.api.routes.showcase import _test_runner
+
+    assert 'data-test-run="/recruiter/tests/stream"' in _test_runner()
+
+
+def test_a_test_child_gets_no_database_url_or_secret(monkeypatch) -> None:
+    from radreport.devtools import test_stream
+
+    for key in ("RADREPORT_DATABASE_URL", "RADREPORT_OWNER_DATABASE_URL", "GEMINI_API_KEY", "RADREPORT_STORAGE__SECRET_ACCESS_KEY"):
+        monkeypatch.setenv(key, "secret")
+    monkeypatch.setenv("RADREPORT_TEST_DATABASE_URL", "postgresql://localhost/radreport_test")
+    env = test_stream._child_env(7)
+    assert "secret" not in env.values() and env["RADREPORT_TEST_DATABASE_URL"].endswith("_test")
+    assert env["RADREPORT_ENVIRONMENT"] == "test" and env[test_stream._FD_ENV] == "7"
+
+
+def test_the_suite_runs_in_batches_covering_every_file() -> None:
+    from radreport.devtools import test_stream
+
+    batches = test_stream._batches()
+    files = [name for batch in batches for name in batch]
+    assert len(batches) > 1 and all(len(batch) <= test_stream._BATCH_FILES for batch in batches)
+    assert len(files) == len(set(files)) and "tests/unit/test_features_page.py" in files

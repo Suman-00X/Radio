@@ -37,6 +37,11 @@ observability = [
     "opentelemetry-instrumentation-httpx>=0.48b0",
     "sentry-sdk>=2.14",
 ]
+# What the recruiter tour's live test run needs in the image.
+test = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
