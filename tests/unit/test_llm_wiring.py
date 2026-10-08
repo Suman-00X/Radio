@@ -113,3 +113,14 @@ def test_errors_per_draft_and_hallucination_rate() -> None:
 
     rate, detail = HallucinationRate().score(item, outputs)
     assert rate == pytest.approx(2 / 3) and detail == {"hallucinated": ["pancreas", "spleen"]}
+
+
+def test_buffered_rows_are_written_parents_first() -> None:
+    """Without relationships the unit of work would insert a provenance span before the field it cites."""
+    from radreport.db.models.reporting import ProvenanceSpan, ReportDraft, ReportFieldValue
+    from radreport.pipeline.graph import in_dependency_order
+
+    span, field, draft = ProvenanceSpan(), ReportFieldValue(), ReportDraft()
+    other_span = ProvenanceSpan()
+    groups = in_dependency_order([span, field, other_span, draft])
+    assert groups == [[draft], [field], [span, other_span]]

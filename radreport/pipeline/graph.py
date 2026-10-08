@@ -149,13 +149,27 @@ class PipelineGraph:
         return result.output if isinstance(result.output, PipelineState) else state
 
     def _finish(self, session: Session, run: PipelineRun, ctx: RunContext, status: str, error: dict[str, object] | None, buffer: list[object]) -> None:
-        session.add_all(buffer)
+        # The models declare foreign keys but no relationships, so the unit of work does not order inserts by them; write parents first, one batch per table.
+        for table_rows in in_dependency_order(buffer):
+            session.add_all(table_rows)
+            session.flush()
         run.status = status
         run.completed_at = dt.datetime.now(dt.UTC)
         run.total_cost_usd = round(ctx.spent_usd, 4)
         if error is not None:
             run.error_detail = error
         session.flush()
+
+
+def in_dependency_order(rows: Sequence[object]) -> list[list[object]]:
+    """`rows` grouped by table, parent tables before the tables whose foreign keys point at them; order within a table is kept."""
+    from radreport.db.base import Base
+
+    rank = {table: i for i, table in enumerate(Base.metadata.sorted_tables)}
+    groups: dict[object, list[object]] = {}
+    for row in rows:
+        groups.setdefault(getattr(row, "__table__", None), []).append(row)
+    return [groups[table] for table in sorted(groups, key=lambda t: rank.get(t, len(rank)))]
 
 
 def new_run(session: Session, *, tenant_id: uuid.UUID, recording_id: uuid.UUID, trigger: str, is_shadow: bool = False, budget_cap_usd: float | None = None, pipeline_version: str = PIPELINE_VERSION) -> tuple[PipelineRun, RunContext, PipelineState]:
