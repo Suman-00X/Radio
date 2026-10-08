@@ -11,7 +11,8 @@ name: synthetic-load
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    # Every 10 minutes: Render's free plan sleeps after 15 idle minutes and GitHub often starts late.
+    - cron: "*/10 * * * *"
   workflow_dispatch:
     inputs:
       vus:
@@ -31,6 +32,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Wake the instance
+        env:
+          BASE_URL: ${{ secrets.RADREPORT_BASE_URL }}
+        run: |
+          test -n "$BASE_URL" || { echo "::error::RADREPORT_BASE_URL secret is not set"; exit 1; }
+          curl -fsS --retry 18 --retry-delay 10 --retry-all-errors --max-time 60 -o /dev/null -w "ready: %{http_code} in %{time_total}s\n" "${BASE_URL%/}/ready"
       - uses: grafana/setup-k6-action@v1
       - name: Run k6
         env:
