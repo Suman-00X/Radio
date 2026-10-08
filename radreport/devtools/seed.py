@@ -2,8 +2,8 @@
 
 Order: load the model catalog (seed_model_catalog) -> create the first product admin, with a
 password taken from the environment (seed_platform_admin) -> create the logins shown on the login
-page's test-credentials tab (seed_demo_accounts) -> create a demo lab with sample data
-(seed_demo_tenant); main runs all four. On a developer machine, --local-accounts adds a sign-in
+page's test-credentials tab (seed_demo_accounts, and seed_demo_lab_accounts for a lab's) -> create a
+demo lab with sample data (seed_demo_tenant); main runs all of them. On a developer machine, --local-accounts adds a sign-in
 for every role (devtools/local_accounts.py). Every later account is added from the admin panel.
 """
 
@@ -18,14 +18,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from radreport.adapters.llm.pricing import GEMINI_KEY_ENV, GEMINI_SEED_PRICES, SEED_PRICES, derive_cache_prices
-from radreport.admin.auth import set_password
+from radreport.admin.auth import set_password, verify_password
+from radreport.auth.lab import set_password as set_lab_password
 from radreport.core.config import get_settings
 from radreport.core.logging import configure_logging, get_logger
-from radreport.core.types import AuthMethod, PlatformRole, ProviderKind, TaskBucket, TaskKey
+from radreport.core.types import AuthMethod, PlatformRole, ProviderKind, TaskBucket, TaskKey, UserRole
+from radreport.db.models.identity import AppUser
 from radreport.db.models.modelconfig import ModelDefinition, ModelProvider
-from radreport.db.models.tenancy import PlatformUser
-from radreport.db.session import system_session
+from radreport.db.models.tenancy import PlatformUser, Tenant
+from radreport.db.session import system_session, tenant_session
 from radreport.onboarding.registration import LabRegistration, register_lab
+from radreport.onboarding.roster import RosterRow, import_roster
 
 log = get_logger(__name__)
 
@@ -112,17 +115,42 @@ def seed_demo_accounts(session: Session) -> list[PlatformUser]:
     accounts = []
     for account in get_settings().demo_accounts:
         if account.lab:
-            # A lab login belongs to that lab's users, which this seed does not create.
-            log.warning("demo_login_skipped", email=account.email, lab=account.lab, detail="a lab account; add it as a user of that lab")
+            # A lab login is created in its lab's own session (seed_demo_lab_accounts).
             continue
         user = session.execute(select(PlatformUser).where(PlatformUser.email == account.email)).scalar_one_or_none()
         if user is None:
             user = PlatformUser(email=account.email, display_name=account.label, role=PlatformRole(account.role))
             session.add(user)
             session.flush()
-        user.role = PlatformRole(account.role)
-        set_password(session, email=account.email, password=account.password)
+        user.role, user.is_active = PlatformRole(account.role), True
+        # Only on a change, so a restart signs nobody out.
+        if not verify_password(account.password, user.password_hash):
+            set_password(session, email=account.email, password=account.password)
         accounts.append(user)
+    return accounts
+
+
+def seed_demo_lab_accounts() -> list[str]:
+    """Create each configured lab demo login in its lab, with that one role and the configured password; returns their emails, skipping a missing lab."""
+    accounts = []
+    for account in get_settings().demo_accounts:
+        if not account.lab:
+            continue
+        with system_session() as session:
+            tenant_id = session.execute(select(Tenant.id).where(Tenant.slug == account.lab)).scalar_one_or_none()
+        if tenant_id is None:
+            log.warning("demo_login_skipped", email=account.email, lab=account.lab, detail="no lab with this slug yet")
+            continue
+        with tenant_session(tenant_id) as session:
+            user = session.execute(select(AppUser).where(AppUser.tenant_id == tenant_id, AppUser.email == account.email)).scalar_one_or_none()
+            if user is None:
+                code = "DEMO-" + account.email.split("@")[0].upper()
+                user = import_roster(session, tenant_id=tenant_id, rows=[RosterRow(employee_code=code, display_name=account.label, email=account.email, roles=(UserRole(account.role),))]).created[0]
+            # Exactly the configured role: a password shown to the public never carries a write role.
+            user.roles, user.is_active = [account.role], True
+            if not verify_password(account.password, user.password_hash):
+                set_lab_password(session, user_id=user.id, password=account.password, actor_id=None)
+            accounts.append(account.email)
     return accounts
 
 
@@ -162,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"platform admin: {admin.id} <{admin.email}>")
         if not admin.password_hash:
             print(f"  no password set: export {ADMIN_PASSWORD_ENV} and re-run, or run `make admin-password EMAIL={admin.email}`")
+    for email in seed_demo_lab_accounts():
+        print(f"demo lab login: {email}")
 
     if args.local_accounts:
         from pathlib import Path

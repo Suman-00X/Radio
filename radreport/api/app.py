@@ -61,11 +61,12 @@ def _replica_health() -> dict[str, object]:
 
 
 def _first_seed() -> None:
-    """Seed a database with no labs; a failure is logged and the API starts anyway, with /ready reporting the database."""
-    from radreport.db.first_seed import seed_if_empty
+    """Seed a database with no labs, then sync the demo logins; a failure is logged and the API starts anyway, with /ready reporting the database."""
+    from radreport.db.first_seed import seed_if_empty, sync_demo_logins
 
     try:
         seed_if_empty()
+        sync_demo_logins()
     except Exception:  # noqa: BLE001 - never keep the API down over seed data
         get_logger(__name__).exception("first_seed_failed")
 

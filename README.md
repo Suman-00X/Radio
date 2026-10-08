@@ -216,7 +216,7 @@ storage under `fallbacks`.
 
 | Task | How |
 |---|---|
-| Re-sync demo logins after changing `RADREPORT_DEMO_ACCOUNTS` | `python -m radreport.devtools.seed` (Render Shell on a paid plan: `radreport-start seed`) |
+| Re-sync demo logins after changing `RADREPORT_DEMO_ACCOUNTS` | Restart the service: the API brings them in step on every start. By hand: `python -m radreport.db.first_seed` |
 | Reset an admin's password | `python -m radreport.admin.cli set-password --email <email>` |
 | Run migrations by hand | Redeploy (every start migrates), or `ops/docker/start.sh migrate` |
 | Scale | Raise `WEB_CONCURRENCY` / `WORKER_CONCURRENCY`, but keep processes × (`POOL_SIZE` + `MAX_OVERFLOW`) under Neon's `max_connections` (≈100 on the smallest compute), or add PgBouncer |

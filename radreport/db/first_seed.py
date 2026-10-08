@@ -2,7 +2,9 @@
 
 Order: take a database-wide advisory lock, so API workers starting together seed once between them ->
 check the tenant table, and stop if any lab exists -> run the seeders from devtools/seed.py in one
-transaction (seed_if_empty). The API calls seed_if_empty on start; it also runs on its own:
+transaction (seed_if_empty) -> bring the demo logins in step with the settings whether or not it
+seeded (sync_demo_logins), since a host without a shell has no other way to. The API calls both on
+start; they also run on their own:
 
     python -m radreport.db.first_seed
 """
@@ -45,9 +47,22 @@ def seed_if_empty() -> bool:
     return True
 
 
+def sync_demo_logins() -> int:
+    """Create or update every configured demo login, admin panel and lab; returns how many are in step."""
+    from radreport.devtools.seed import seed_demo_accounts, seed_demo_lab_accounts
+
+    with system_session() as session:
+        session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": SEED_LOCK_KEY})
+        platform = len(seed_demo_accounts(session))
+    lab = len(seed_demo_lab_accounts())
+    log.info("demo_logins_synced", admin_panel=platform, lab=lab)
+    return platform + lab
+
+
 def main() -> int:
     configure_logging()
     print("seeded" if seed_if_empty() else "skipped: the database already has a lab")
+    print(f"demo logins in step: {sync_demo_logins()}")
     return 0
 
 
